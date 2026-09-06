@@ -2,7 +2,7 @@
 
 ## Requirements
 
-Node.js **≥ 20.11.0** (declared in `package.json` `engines` and tested in CI) and Chrome **≥ 120**.
+Node.js **≥ 22.13.0** (declared in `package.json` `engines` and tested in CI) and Chrome **≥ 120**.
 
 ```bash
 npm install
@@ -122,12 +122,12 @@ Fixture philosophy and the both-directions assertion are described in
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs `lint`, `typecheck` and `test` on Node 20.11.0 — the `engines` floor,
-because an untested promise is a guess — as well as 22 and 24. It then builds and uploads the extension as
-an artifact, so every commit has an installable package attached. Before uploading it checks the three
-things a broken build would otherwise ship silently: that every file the manifest names exists, that the
-manifest version matches `package.json`, and that no sourcemap reference survived into the production
-bundle.
+`.github/workflows/ci.yml` runs `lint`, `typecheck` and `test` on Node 22.13.0 — the `engines` floor,
+because an untested promise is a guess — as well as the current LTS. It then builds and uploads the
+extension as an artifact, so every commit has an installable package attached. Before uploading it checks
+the three things a broken build would otherwise ship silently: that every file the manifest names exists,
+that the manifest version matches `package.json`, and that no sourcemap reference survived into the
+production bundle.
 
 Dependabot (`.github/dependabot.yml`) proposes weekly updates, grouped into one pull request per ecosystem
 so the noise stays proportionate to a dev-only dependency tree.

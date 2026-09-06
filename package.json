@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=20.11.0"
+    "node": ">=22.13.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -24,12 +24,12 @@
     "verify": "npm run lint && npm run typecheck && npm run test"
   },
   "devDependencies": {
-    "@types/chrome": "^0.0.287",
+    "@types/chrome": "^0.2.9",
     "@types/node": "^22.10.2",
     "esbuild": "^0.28.2",
-    "eslint": "^9.17.0",
+    "eslint": "^10.10.0",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8.18.2",
-    "vitest": "^3.2.7"
+    "typescript-eslint": "^8.69.0",
+    "vitest": "^5.0.0"
   }
 }

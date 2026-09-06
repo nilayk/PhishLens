@@ -23,7 +23,7 @@ cannot infer from the code.
 npm run verify   # lint && typecheck && test — all three, every time
 ```
 
-CI runs exactly this on Node 20.11.0, 22 and 24. Do not finish a task with a failing or skipped check, and
+CI runs exactly this on Node 22.13.0 and 24. Do not finish a task with a failing or skipped check, and
 do not weaken a lint rule, loosen a `tsconfig` option, or delete an assertion to make something pass. If a
 rule seems wrong, say so instead of routing around it.
 

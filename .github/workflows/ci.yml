@@ -25,8 +25,8 @@ jobs:
       # Report every version's result; knowing it fails only on the floor is the useful part.
       fail-fast: false
       matrix:
-        # The floor declared in package.json engines, the current LTS, and the release between them.
-        node: ['20.11.0', '22', '24']
+        # The floor declared in package.json engines, and the current LTS.
+        node: ['22.13.0', '24']
     steps:
       - uses: actions/checkout@v7
 

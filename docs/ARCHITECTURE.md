@@ -59,7 +59,7 @@ require the app to be built by Vite.
 | Lint       | ESLint 9 flat config + `typescript-eslint` `strictTypeChecked`              |
 | Framework  | **None.** See §5.                                                          |
 | Runtime deps | **Zero.** All detection is standard library + `URL` + `Intl`.             |
-| Node       | `>=20.11.0` (`engines` in `package.json`, and the CI floor)                 |
+| Node       | `>=22.13.0` (`engines` in `package.json`, and the CI floor)                 |
 
 Lint rules explicitly enforced as requested: `@typescript-eslint/no-explicit-any` (error),
 `@typescript-eslint/no-unused-vars` (error), `@typescript-eslint/no-floating-promises` (error).
@@ -658,8 +658,15 @@ Every string from an email is treated as attacker-controlled.
 ## 9. Shipping: CI, packaging, and the UI harness
 
 `npm run verify` (lint + typecheck + test) is the gate, and `.github/workflows/ci.yml` runs it on the
-`engines` floor (Node 20.11.0) as well as 22 and 24, because the floor is a promise and an untested
+`engines` floor (Node 22.13.0) as well as the current LTS, because the floor is a promise and an untested
 promise is a guess.
+
+The floor tracks what the toolchain supports rather than being held back for its own sake. It was Node
+20.11.0 until Vitest 5 dropped Node 20, which had by then reached end of life; testing on a runtime
+receiving no security fixes is not a promise worth the cost of pinning a test runner to keep it. The exact
+figure is the highest floor any dev dependency imposes — Vitest 5 wants `^22.12.0` and ESLint 10 wants
+`^22.13.0`, so 22.12 would install and then fail. Raising it means checking both, not just the tool that
+prompted the change.
 
 CI then builds and uploads the extension, so every commit carries an installable package rather than
 requiring a reviewer to have a toolchain. Three checks run before the upload, each guarding a failure that
