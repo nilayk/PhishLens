@@ -11,11 +11,17 @@
  *     added to it later is exactly the regression worth catching.
  */
 import { describe, expect, it } from 'vitest';
+import { resolveAnalyzer } from '../src/analysis/llm/index.js';
+import { ModelServerAnalyzer } from '../src/analysis/llm/model-server.js';
 import { buildCloudPayload, describeNameShape, redactAddresses } from '../src/analysis/llm/redact.js';
 import {
   DEFAULT_SETTINGS,
   isCloudConfigured,
+  isModelServerConfigured,
+  isModelServerRemote,
   normalizeBackendUrl,
+  normalizeModelBaseUrl,
+  normalizeModelName,
   normalizeSettings,
 } from '../src/shared/settings.js';
 import type { EmailMessage } from '../src/shared/types.js';
@@ -33,6 +39,29 @@ describe('default settings', () => {
     // default cannot start sending content anywhere.
     expect(isCloudConfigured({ ...DEFAULT_SETTINGS, aiMode: 'cloud' })).toBe(false);
     expect(isCloudConfigured({ ...DEFAULT_SETTINGS, backendBaseUrl: 'https://x.example' })).toBe(false);
+  });
+
+  it('reaches no model server out of the box, and not without all three of the pieces', () => {
+    expect(DEFAULT_SETTINGS.modelBaseUrl).toBe('');
+    expect(DEFAULT_SETTINGS.modelName).toBe('');
+    expect(isModelServerConfigured(DEFAULT_SETTINGS)).toBe(false);
+
+    const url = 'http://localhost:11434/v1';
+    expect(isModelServerConfigured({ ...DEFAULT_SETTINGS, aiMode: 'server' })).toBe(false);
+    expect(isModelServerConfigured({ ...DEFAULT_SETTINGS, modelBaseUrl: url })).toBe(false);
+    // Mode and URL but no model: these servers substitute or reject silently, so a half-configured
+    // mode would look enabled while every request failed.
+    expect(isModelServerConfigured({ ...DEFAULT_SETTINGS, aiMode: 'server', modelBaseUrl: url })).toBe(
+      false,
+    );
+    expect(
+      isModelServerConfigured({
+        ...DEFAULT_SETTINGS,
+        aiMode: 'server',
+        modelBaseUrl: url,
+        modelName: 'qwen2.5:7b',
+      }),
+    ).toBe(true);
   });
 });
 
@@ -63,8 +92,125 @@ describe('normalizeSettings', () => {
   it('ignores unknown keys instead of carrying them forward', () => {
     const normalized = normalizeSettings({ aiMode: 'off', apiKey: 'sk-secret', debug: true });
     expect(Object.keys(normalized).sort()).toEqual(
-      ['aiMode', 'backendBaseUrl', 'highlightEnabled', 'showBadgeWhenLow'].sort(),
+      [
+        'aiMode',
+        'backendBaseUrl',
+        'highlightEnabled',
+        'modelBaseUrl',
+        'modelName',
+        'showBadgeWhenLow',
+      ].sort(),
     );
+  });
+});
+
+/**
+ * The one place where plaintext HTTP is permitted, so the rule is pinned from both directions. The
+ * asymmetry is the whole design: loopback has no wire to intercept, anything else carries the subject
+ * and body of the open message and must therefore use TLS.
+ */
+describe('normalizeModelBaseUrl', () => {
+  it.each([
+    ['Ollama', 'http://localhost:11434/v1', 'http://localhost:11434/v1'],
+    ['LM Studio', 'http://127.0.0.1:1234/v1', 'http://127.0.0.1:1234/v1'],
+    ['Docker Model Runner', 'http://localhost:12434/engines/v1', 'http://localhost:12434/engines/v1'],
+    ['IPv6 loopback', 'http://[::1]:11434/v1', 'http://[::1]:11434/v1'],
+    ['a trailing slash', 'http://localhost:11434/v1/', 'http://localhost:11434/v1'],
+    ['uppercase host', 'http://LOCALHOST:11434/v1', 'http://localhost:11434/v1'],
+  ])('accepts %s over http', (_label, input, expected) => {
+    expect(normalizeModelBaseUrl(input)).toBe(expected);
+  });
+
+  it('accepts a remote server only over https', () => {
+    expect(normalizeModelBaseUrl('https://models.example.com/v1')).toBe('https://models.example.com/v1');
+    expect(normalizeModelBaseUrl('https://box.tail1234.ts.net/v1')).toBe('https://box.tail1234.ts.net/v1');
+  });
+
+  it.each([
+    ['plaintext to a LAN address', 'http://192.168.1.50:11434/v1'],
+    ['plaintext to a hostname', 'http://models.example.com/v1'],
+    ['plaintext to a host merely containing localhost', 'http://localhost.evil.example/v1'],
+    ['a javascript: URL', 'javascript:alert(1)'],
+    ['a data: URL', 'data:text/plain,hi'],
+    ['a file: URL', 'file:///etc/passwd'],
+    ['credentials in the URL', 'https://user:pass@models.example.com/v1'],
+    ['a bare hostname', 'localhost:11434'],
+    ['an empty string', ''],
+    ['a non-string', 42],
+    ['null', null],
+  ])('refuses %s', (_label, input) => {
+    expect(normalizeModelBaseUrl(input)).toBe('');
+  });
+
+  it('drops query and fragment so a saved URL cannot smuggle parameters', () => {
+    expect(normalizeModelBaseUrl('http://localhost:11434/v1?key=secret#x')).toBe(
+      'http://localhost:11434/v1',
+    );
+  });
+
+  it('cannot be turned on by storage alone', () => {
+    // The same guarantee the backend URL has: a value arriving from an older build, or from a synced
+    // profile, does not by itself start sending anything anywhere.
+    const settings = normalizeSettings({ modelBaseUrl: 'https://models.example.com/v1' });
+    expect(settings.aiMode).toBe('local');
+    expect(isModelServerConfigured(settings)).toBe(false);
+  });
+
+  it('distinguishes a server on this machine from one that is not', () => {
+    const on = { ...DEFAULT_SETTINGS, modelBaseUrl: 'http://localhost:11434/v1' };
+    const off = { ...DEFAULT_SETTINGS, modelBaseUrl: 'https://models.example.com/v1' };
+    expect(isModelServerRemote(on)).toBe(false);
+    expect(isModelServerRemote(off)).toBe(true);
+    expect(isModelServerRemote(DEFAULT_SETTINGS)).toBe(false);
+  });
+});
+
+describe('the model-server adapter', () => {
+  const email = loadFixture('legitimate').email;
+
+  it('does nothing at all until the mode, the address and the model are all set', async () => {
+    for (const settings of [
+      DEFAULT_SETTINGS,
+      { ...DEFAULT_SETTINGS, aiMode: 'server' as const },
+      { ...DEFAULT_SETTINGS, aiMode: 'server' as const, modelBaseUrl: 'http://localhost:11434/v1' },
+      // Configured but not chosen: the mode is what makes it a request, not the presence of an address.
+      {
+        ...DEFAULT_SETTINGS,
+        modelBaseUrl: 'http://localhost:11434/v1',
+        modelName: 'qwen2.5:7b',
+      },
+    ]) {
+      const analyzer = new ModelServerAnalyzer(settings);
+      expect(await analyzer.isAvailable()).toBe(false);
+      // No message channel is opened either, which is what makes this safe to call in Node.
+      expect(await analyzer.analyze(email)).toBeNull();
+    }
+  });
+
+  it('is chosen only by an explicit mode, with no fallback from the on-device model', () => {
+    const configured = {
+      ...DEFAULT_SETTINGS,
+      modelBaseUrl: 'http://localhost:11434/v1',
+      modelName: 'qwen2.5:7b',
+    };
+    expect(resolveAnalyzer({ ...configured, aiMode: 'server' })).toBeInstanceOf(ModelServerAnalyzer);
+    expect(resolveAnalyzer({ ...configured, aiMode: 'local' })).not.toBeInstanceOf(ModelServerAnalyzer);
+    expect(resolveAnalyzer({ ...configured, aiMode: 'off' })).toBeNull();
+  });
+});
+
+describe('normalizeModelName', () => {
+  it('keeps the names real runners use', () => {
+    for (const name of ['qwen2.5:7b', 'ai/smollm2', 'hf.co/user/repo:Q4_K_M', 'llama-3.1-8b-instruct']) {
+      expect(normalizeModelName(name)).toBe(name);
+    }
+  });
+
+  it('strips control characters and bounds the length, since it lands in a JSON body', () => {
+    expect(normalizeModelName('  qwen2.5:7b\n  ')).toBe('qwen2.5:7b');
+    expect(normalizeModelName('a\u0000b\u001fc')).toBe('abc');
+    expect(normalizeModelName('x'.repeat(500))).toHaveLength(200);
+    expect(normalizeModelName(42)).toBe('');
   });
 });
 

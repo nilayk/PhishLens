@@ -36,17 +36,53 @@ export interface CloudAnalyzeRequest {
   };
 }
 
-export type ExtensionRequest = GetSettingsRequest | SetSettingsRequest | CloudAnalyzeRequest;
+/**
+ * Prompt for a model server the user runs. The two strings are exactly what the on-device model is
+ * given, because that is the mode this one substitutes for.
+ *
+ * Note what is *not* here: no URL and no model name. The worker reads both from settings, so the only
+ * address it can ever be made to call is one that survived `normalizeModelBaseUrl`. Accepting an
+ * endpoint over this channel would make the worker a general-purpose fetcher for whatever could send
+ * it a message.
+ */
+export interface ModelServerAnalyzeRequest {
+  type: 'MODEL_SERVER_ANALYZE';
+  payload: {
+    system: string;
+    user: string;
+  };
+}
+
+/** Lists what the configured server has loaded, so the options page can offer real model names. */
+export interface ListModelsRequest {
+  type: 'LIST_MODELS';
+}
+
+export type ExtensionRequest =
+  | GetSettingsRequest
+  | SetSettingsRequest
+  | CloudAnalyzeRequest
+  | ModelServerAnalyzeRequest
+  | ListModelsRequest;
 
 export type ExtensionResponse =
   | { ok: true; type: 'SETTINGS'; settings: Settings }
   | { ok: true; type: 'SEMANTIC'; analysis: SemanticAnalysis | null }
+  | { ok: true; type: 'MODELS'; models: string[] }
   | { ok: false; error: string };
+
+const REQUEST_TYPES: ReadonlySet<string> = new Set([
+  'GET_SETTINGS',
+  'SET_SETTINGS',
+  'CLOUD_ANALYZE',
+  'MODEL_SERVER_ANALYZE',
+  'LIST_MODELS',
+]);
 
 export function isExtensionRequest(value: unknown): value is ExtensionRequest {
   if (value === null || typeof value !== 'object') return false;
   const type = (value as Record<string, unknown>)['type'];
-  return type === 'GET_SETTINGS' || type === 'SET_SETTINGS' || type === 'CLOUD_ANALYZE';
+  return typeof type === 'string' && REQUEST_TYPES.has(type);
 }
 
 /**

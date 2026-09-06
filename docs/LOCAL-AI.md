@@ -3,7 +3,7 @@
 What the language model is asked, what it is allowed to change, and why it is on such a short leash.
 Design reasoning is in [ARCHITECTURE.md §2.2 and §4.3](ARCHITECTURE.md).
 
-## One interface, two implementations
+## One interface, three implementations
 
 ```ts
 interface SemanticAnalyzer {
@@ -12,9 +12,10 @@ interface SemanticAnalyzer {
 }
 ```
 
-`ChromePromptAnalyzer` (on-device, shipped) and `CloudAnalyzer` (designed, inert) implement the same
-interface, so the analysis, scoring, and UI layers cannot tell which one produced a verdict — or whether
-one ran at all.
+`ChromePromptAnalyzer` (Chrome's built-in model, shipped), `ModelServerAnalyzer` (a model server the user
+runs, shipped) and `CloudAnalyzer` (designed, inert) implement the same interface, so the analysis,
+scoring, and UI layers cannot tell which one produced a verdict — or whether one ran at all. The card
+names the source, which is the only place the difference is visible.
 
 The model returns structured data, never prose:
 
@@ -123,7 +124,7 @@ message.
 | `ready` | An assessment was produced. |
 | `pending` | Inference is in flight; the score on screen may still change. |
 | `off` | The user switched AI analysis off. |
-| `unavailable` | No model in this browser, or the cloud backend is not configured. |
+| `unavailable` | No model in this browser, or no server/backend configured — nothing was sent. |
 | `no-output` | The model ran and returned nothing that passed schema validation. |
 | `error` | The model is present but this attempt failed — a timeout, or a rejected session. |
 | `cancelled` | The attempt was abandoned because the reader moved on. |
@@ -157,6 +158,73 @@ message read while Chrome was still downloading the model are all re-assessed on
   while the reader is still looking at their inbox. Warming never downloads a model.
 - The session is cached in the **content script**, never the service worker, which MV3 may terminate at
   any moment.
+
+## Your own model server
+
+Chrome's built-in model is small, and its over-suspicion on ordinary mail is a consequence of that. A 7B
+or larger instruction-tuned model, which most machines can now run, is markedly better at the one question
+this layer asks. `aiMode: 'server'` uses one you run yourself.
+
+**It buys better reasons, not more weight.** Every guarantee above still holds unchanged: 15 points, no
+origination, the same dead zone, the same separation in the UI. A 70B model on your own GPU is bound
+exactly as Gemini Nano is, and `test/semantic.test.ts` asserts it for that source specifically. If a
+larger model could outvote the deterministic checks, then the checks would be the thing worth fixing.
+
+### One request shape for every runner
+
+They all speak OpenAI's `/chat/completions`, so there is one adapter rather than one per runner. Paste the
+base URL exactly as your runner documents it; `/chat/completions` is appended.
+
+| Runner | Base URL | Notes |
+| --- | --- | --- |
+| Ollama | `http://localhost:11434/v1` | Needs `OLLAMA_ORIGINS` — see below |
+| LM Studio | `http://localhost:1234/v1` | Start the server from the Developer tab |
+| Docker Model Runner | `http://localhost:12434/engines/v1` | Requires host-side TCP to be enabled |
+| llama.cpp / vLLM / LocalAI | as configured | Anything OpenAI-compatible works |
+
+**Ollama refuses browser-origin requests by default,** and this is the first thing that goes wrong for
+everybody. Set `OLLAMA_ORIGINS` to include the extension before starting it:
+
+```bash
+# macOS / Linux
+OLLAMA_ORIGINS='chrome-extension://*' ollama serve
+```
+
+```powershell
+# Windows: set it for the user, then restart Ollama from the tray
+setx OLLAMA_ORIGINS "chrome-extension://*"
+```
+
+LM Studio has an equivalent CORS toggle in its server settings. Naming your own extension id rather than
+`chrome-extension://*` is stricter and worth doing if you keep the setting permanently.
+
+Structured output is requested as `json_schema` first, then `json_object`, then not at all, because
+coverage differs by runner and version and a server that does not recognise a `response_format` rejects
+the request rather than ignoring the field. Each retry is a rejected request rather than a wasted
+generation, so this costs a round trip on old servers and nothing on current ones.
+
+### What is sent, and what that costs
+
+The prompt is **byte-for-byte the on-device prompt**: display name, subject, body excerpt. Not the link
+targets, not the sending domain, not the attachment types, not the recipient address — the same
+withholding described under Calibration, for the same reason. There is no `Authorization` header and no
+field for a key, so this cannot be pointed at a hosted vendor and used as a key-bearing client.
+
+Plain `http://` is accepted **only for `localhost`, `127.0.0.1` and `[::1]`**, where there is no wire to
+intercept. Any other host must be `https://`: the request carries the text of the message you are reading,
+and sending that in the clear across a LAN would be a worse leak than most things this extension warns
+about. `test/privacy.test.ts` pins both halves of that rule, including that `http://localhost.evil.example`
+is not loopback.
+
+Access to the server is an **optional host permission**, requested for that one origin when you press
+Connect, and handed back when you change the address. A default install still asks for `storage` and
+`https://mail.google.com/*` and nothing else — a blanket `http://*/*` in `host_permissions` would make
+every user pay a permission for a feature most will not enable.
+
+The timeout is 45 seconds, against 20 for the on-device model, because the work is happening on your
+hardware and a 7B model on a CPU can take most of a minute on a long message. The card shows `pending`
+throughout and the deterministic score is already on screen, so the wait costs latency on the AI section
+rather than on the verdict.
 
 ## The cloud design, which is not built
 

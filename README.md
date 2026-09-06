@@ -56,7 +56,11 @@ wording. That is entirely optional, it runs on your machine, and it is kept on a
 worth at most 15 of the 100 points, it is not allowed to reason about domains or links, and it cannot
 raise a score on its own — only sharpen one the factual checks already support. If there is no model, or
 you switch it off, the extension works exactly as before and the card says so instead of staying quiet.
-[More on the local AI.](docs/LOCAL-AI.md)
+
+If you already run models yourself — **Ollama, LM Studio, Docker Model Runner** — you can point PhishLens
+at one instead, and get better-written reasons from a larger model. It still cannot raise a score on its
+own, and it still only sees the subject and body, never the links or domains. [Setting that
+up.](docs/LOCAL-AI.md#your-own-model-server)
 
 ## Install
 
@@ -92,10 +96,11 @@ it. Concretely:
   browsing history, no other sites, no downloads, no cookies.
 - **No accounts, no telemetry, no analytics.** Nothing counts how often you use it.
 
-There is a cloud-analysis mode designed but *not built*, and reaching it would take two deliberate
-choices from you: switching the mode and typing in the address of a server you run. Until then no
-configuration of this extension sends your mail anywhere. [The full privacy and security
-model.](docs/PRIVACY.md)
+Nothing above changes unless you deliberately change it. If you connect your own model server, the
+subject and body of the message you are reading go to the address you typed — which is why plain
+`http://` is only accepted for `localhost`, and why Chrome asks you to approve that one address before
+anything is sent. There is also a cloud mode that is designed but *not built*. [The full privacy and
+security model.](docs/PRIVACY.md)
 
 ## What it cannot do
 
@@ -122,7 +127,7 @@ Being clear about the limits is part of being trustworthy:
 | Document | What is in it |
 | --- | --- |
 | [Detection and scoring](docs/DETECTION.md) | Every category of check, how the 0–100 score is assembled, and how false positives are held down. |
-| [Local AI](docs/LOCAL-AI.md) | The on-device model: enabling it, what it is allowed to do, and the cloud design that is not built. |
+| [Local AI](docs/LOCAL-AI.md) | The on-device model, connecting your own (Ollama, LM Studio, Docker Model Runner), what a model is allowed to do, and the cloud design that is not built. |
 | [Privacy and security](docs/PRIVACY.md) | Permissions, exactly what data exists and where, and the threat model. |
 | [Development](docs/DEVELOPMENT.md) | Building, testing, the UI harness, project layout, and releases. |
 | [Architecture](docs/ARCHITECTURE.md) | The long-form design record: every significant decision and why it was made that way. |

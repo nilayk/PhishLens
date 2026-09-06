@@ -125,8 +125,9 @@ background service worker holds no analysis state at all.**
 - The session is **warmed at startup and used by one caller at a time** — see §2.2.
 - **The service worker does exactly three things**, all of which are safe to lose at any instant:
   1. `GET_SETTINGS` / `SET_SETTINGS` — read/write `chrome.storage.sync`, no in-memory cache.
-  2. `CLOUD_ANALYZE` — the single future egress point (see §6). It is a pure request/response
-     `fetch` with no session.
+  2. Egress: `MODEL_SERVER_ANALYZE` and `LIST_MODELS` for a model server the user runs (§6), and
+     `CLOUD_ANALYZE` for the unbuilt backend (§6.1). Each is a pure request/response `fetch` with no
+     session, against a URL read from settings rather than from the message.
   3. `chrome.runtime.onInstalled` — seed default settings.
   Every handler re-reads storage from scratch. There is no `let cache = ...` anywhere in
   `src/background/`, and this is asserted by a unit test over the module's source shape.
@@ -592,7 +593,60 @@ is already complete.
 
 ---
 
-## 6. Cloud analysis: designed, not shipped
+## 6. A model server the user runs
+
+`src/analysis/llm/model-server.ts` implements the same `SemanticAnalyzer` interface against an
+OpenAI-compatible `POST {modelBaseUrl}/chat/completions`. It exists because Chrome's built-in model is
+small, and §4.3.1 is largely a list of consequences of that: a 7B-and-up instruction-tuned model, which
+most machines can now run, is materially better at the only question this layer asks. Anyone already
+running Ollama or LM Studio has one.
+
+Five decisions, each with an alternative that was considered and rejected.
+
+**One protocol, not one adapter per runner.** Ollama, LM Studio, Docker Model Runner, llama.cpp, vLLM and
+LocalAI all expose `/chat/completions`. Ollama also has a richer native API, and using it would allow
+`format: json` and keep-alive tuning — but it would mean a second request shape, a second response parser
+and a second set of failure modes for one runner's benefit. The base URL is stored with its path prefix
+precisely so one shape covers all of them, since the prefix is where they differ (`/v1` against
+`/engines/v1`).
+
+**Plaintext HTTP for loopback only.** `normalizeBackendUrl` is https-only, which is right for a remote
+backend and wrong here: every runner's documentation says `http://localhost:…`, and there is no wire
+between the extension and a process on the same machine. `normalizeModelBaseUrl` therefore permits `http:`
+for `localhost`, `127.0.0.1` and `[::1]`, and requires TLS everywhere else. `localhost` resolves through
+the OS and could in principle be redirected by a hosts file, so excluding it would be marginally stricter —
+and it would also make the documented setup fail, which teaches users that the field is broken rather than
+that it is careful. The rule that carries the weight is that anything *not* loopback needs https.
+
+**An optional host permission, granted per origin.** A model server can be on any host and port, so
+reaching one needs a host permission, and the obvious route — adding `http://localhost/*` to
+`host_permissions` — charges every user a permission for a feature most will never enable, and breaks the
+"two permissions" claim that the README leads with. Instead `optional_host_permissions` covers the broad
+patterns, and the options page requests the single typed origin on a click. A default install is unchanged;
+the grant is per-origin, prompted by Chrome, listed in `chrome://extensions`, and released when the address
+changes.
+
+**The endpoint is never taken from a message.** The content script sends only the two prompt strings; the
+worker reads the URL and model name from settings. Passing the endpoint through the message channel would
+have been simpler and would have made the worker a general-purpose fetcher for anything that could send it
+a message — a much larger capability than "a model client", and one that `sender.id` checking alone would
+not contain.
+
+**The cap does not move.** It would be defensible to argue that a 70B model deserves more than 15 points.
+It gets 15, scores zero uncorroborated, and observes the same dead zone, because "the model cannot outvote
+the checks" is an invariant and configuration must not be able to weaken an invariant. What a better model
+buys is a better *explanation* of a verdict the deterministic layer already reached. `test/semantic.test.ts`
+asserts the ceiling for this source specifically rather than trusting that it is source-agnostic by
+construction.
+
+Structured output is negotiated downwards — `json_schema`, then `json_object`, then unconstrained — because
+coverage differs by runner and version, and a server that does not recognise a `response_format` rejects
+the request rather than ignoring the field. A rejection costs a round trip, not a generation. The timeout is
+45 s against the on-device 20 s, since the work is happening on the user's own hardware.
+
+---
+
+## 6.1 Cloud analysis: designed, not shipped
 
 `src/analysis/llm/cloud.ts` implements `SemanticAnalyzer` against
 `POST {backendBaseUrl}/api/analyze`. It is **inert in the MVP**: `isAvailable()` returns `false`
@@ -622,17 +676,22 @@ Non-negotiables baked into the design:
 | Analysed locally (rules)       | `AnalysisContext`, `SecuritySignal[]` — in-memory only       | No                  |
 | Analysed locally (on-device AI) | truncated prompt → on-device model                          | No                  |
 | Persisted                      | **settings only** (`aiMode`, `highlightEnabled`, …)          | `storage.sync` only |
+| Own model server (opt-in)      | the same truncated prompt — name, subject, body             | To that address; loopback by default |
 | Cloud-assisted (opt-in, unbuilt) | redacted `CloudAnalyzeRequest`                             | Yes — to our backend |
 
-- **Default `aiMode` is `local`.** Cloud is never the default and cannot be silently enabled.
+- **Default `aiMode` is `local`.** Neither network mode is the default, and neither can be silently
+  enabled: each needs a mode choice and an address, and the model-server mode additionally needs a
+  permission grant that Chrome prompts for by origin.
 - No message body is ever persisted. No analysis result is written to `chrome.storage`.
 - `src/shared/logger.ts` is the only logging surface. It is a no-op unless
   `__PHISHLENS_DEV__` is true (a compile-time `define`, `false` in production builds), and it
   additionally refuses to log values that look like message bodies. Production bundles contain no
   `console.*` call reachable with email content.
-- Permissions requested: `storage` + `host_permissions: ["https://mail.google.com/*"]`. Nothing
+- Permissions granted at install: `storage` + `host_permissions: ["https://mail.google.com/*"]`. Nothing
   else. Not `activeTab`, not `scripting`, not `tabs`, not `webRequest`, not `<all_urls>`. The badge
-  is injected by a *declared* content script, so `scripting` is unnecessary.
+  is injected by a *declared* content script, so `scripting` is unnecessary. The one
+  `optional_host_permissions` entry is granted per-origin, on a click, only by a user configuring a model
+  server (§6).
 
 ---
 

@@ -82,6 +82,7 @@ each state is a link:
 ```text
 ?fixture=microsoft-phish   any file in test/fixtures/
 ?semantic=ready            ready | pending | unavailable | no-output | error | cancelled | off
+?ai=local                  local | server | cloud | off — which analyzer the card names
 ?view=full                 full (mock message) | card (card alone) | badges (one row per risk band)
 ?card=1                    open the explanation card
 ?bare=1                    hide the harness controls, for screenshots
@@ -104,7 +105,7 @@ UI change is one command away from being reflected in the README instead of sile
 
 ## Testing
 
-674 tests, all in plain Node — no Chrome, no Gmail, no network.
+702 tests, all in plain Node — no Chrome, no Gmail, no network.
 
 | File | Covers |
 | --- | --- |
@@ -114,7 +115,7 @@ UI change is one command away from being reflected in the README instead of sile
 | `test/chrome-prompt.test.ts` | The on-device adapter against fakes for every API shape Chrome has shipped and every malformed shape it might, plus concurrency: a session fake that rejects overlapping prompts the way the real one does. |
 | `test/url.test.ts` | Obfuscated IP forms, forged suffix boundaries, redirect chains, hostnames `new URL()` accepts but that cannot exist. |
 | `test/unicode.test.ts` | Punycode decoding, script mixing, bidi tricks, confusable folding, bounded edit distance. |
-| `test/privacy.test.ts` | Settings validation, and what `buildCloudPayload` **drops** as well as what it keeps. |
+| `test/privacy.test.ts` | Settings validation, the model-server URL policy from both directions (loopback `http:` yes, anything else no), and what `buildCloudPayload` **drops** as well as what it keeps. |
 | `test/observer.test.ts` | The SPA observer's emit and suppress decisions in both directions, since every negative decision it makes is silent by design. |
 
 Fixture philosophy and the both-directions assertion are described in

@@ -158,7 +158,7 @@ export interface SecuritySignal {
   dampened?: boolean;
 }
 
-export type SemanticSource = 'none' | 'local' | 'cloud';
+export type SemanticSource = 'none' | 'local' | 'cloud' | 'server';
 
 export interface AnalysisResult {
   /** 0–100, integer. */
@@ -262,10 +262,15 @@ export interface SemanticAnalyzer {
 // Settings
 // ---------------------------------------------------------------------------
 
-export type AiMode = 'off' | 'local' | 'cloud';
+/**
+ * `local` is Chrome's built-in model; `server` is a model the user runs themselves and reaches over
+ * HTTP. Both are "local" in ordinary speech, which is why the options page names them by what they are
+ * rather than by these values.
+ */
+export type AiMode = 'off' | 'local' | 'cloud' | 'server';
 
 export interface Settings {
-  /** Default is `local`: on-device only. Cloud is never the default. */
+  /** Default is `local`: on-device only. Neither network mode is ever the default. */
   aiMode: AiMode;
   /** Highlight suspicious links/text in the message when a finding is focused. */
   highlightEnabled: boolean;
@@ -276,4 +281,12 @@ export interface Settings {
    * it. This is never a model-vendor endpoint and never carries a vendor API key.
    */
   backendBaseUrl: string;
+  /**
+   * OpenAI-compatible base URL of a model server the user runs, as its own documentation gives it —
+   * `http://localhost:11434/v1` for Ollama, `http://localhost:12434/engines/v1` for Docker Model
+   * Runner. `/chat/completions` is appended to it.
+   */
+  modelBaseUrl: string;
+  /** Model name to request, as that server names it. No default: there is no model we can assume. */
+  modelName: string;
 }

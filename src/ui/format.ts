@@ -136,16 +136,33 @@ const AI_ABSENCE_NOTES: Readonly<Record<SemanticStatus, ((source: string) => str
     `${source} could not finish assessing this message. The score is based entirely on technical checks.`,
 };
 
-/** Sentence-initial name for whichever analyzer the current mode uses. */
-function analyzerName(aiMode: AiMode): string {
-  return aiMode === 'cloud' ? 'The analysis service' : 'The on-device model';
-}
+/**
+ * Sentence-initial name for whichever analyzer the current mode uses. Naming it matters because the
+ * modes differ in where the message went, and a note that says "the on-device model" while a server was
+ * doing the reading misleads about exactly the thing a privacy-conscious reader is checking.
+ *
+ * The `off` entry is never rendered — that note takes no source — but a `Record` costs nothing and means
+ * a fifth mode cannot be added without wording.
+ */
+const ANALYZER_NAMES: Readonly<Record<AiMode, string>> = {
+  off: 'The on-device model',
+  local: 'The on-device model',
+  cloud: 'The analysis service',
+  server: 'Your model server',
+};
 
 /** Why there is no assessment, or `null` when there is one. */
 export function aiAbsenceNote(status: SemanticStatus, aiMode: AiMode): string | null {
-  return AI_ABSENCE_NOTES[status]?.(analyzerName(aiMode)) ?? null;
+  return AI_ABSENCE_NOTES[status]?.(ANALYZER_NAMES[aiMode]) ?? null;
 }
 
+const PENDING_LABELS: Readonly<Record<AiMode, string>> = {
+  off: 'Reading the message on-device…',
+  local: 'Reading the message on-device…',
+  cloud: 'Sending for analysis…',
+  server: 'Waiting for your model server…',
+};
+
 export function pendingLabel(aiMode: AiMode): string {
-  return aiMode === 'cloud' ? 'Sending for analysis…' : 'Reading the message on-device…';
+  return PENDING_LABELS[aiMode];
 }

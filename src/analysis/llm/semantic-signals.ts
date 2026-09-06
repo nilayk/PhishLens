@@ -14,6 +14,7 @@
  *  - Wording is always assessment ("wording resembles…"), never observation, so the panel can separate
  *    what was measured from what was judged.
  */
+import { truncate } from '../../shared/text.js';
 import type { SecuritySignal, SemanticAnalysis, SemanticCategory, Severity } from '../../shared/types.js';
 import { SEMANTIC_SCORING } from '../scoring/config.js';
 import { signal } from '../rules/types.js';
@@ -96,7 +97,7 @@ export function semanticToSignals(
   const corroborated = isCorroborated(deterministic);
   const severity = severityForRisk(analysis, corroborated);
   const score = Math.round(rawScore(analysis, corroborated));
-  const sourceLabel = analysis.source === 'local' ? 'on-device model' : 'analysis service';
+  const sourceLabel = describeSource(analysis);
 
   const meaningfulCategories = analysis.categories.filter((c) => c !== 'benign');
   const categoryText =
@@ -183,4 +184,25 @@ export function semanticToSignals(
   }
 
   return signals;
+}
+
+/**
+ * Names the model that produced the reading, mid-sentence.
+ *
+ * A self-hosted model is named where it is known, because "your model server (qwen2.5:7b)" is checkable
+ * — the reader can go and ask that model the same question — where "the model" is not. The name comes
+ * from settings rather than from the response, so a model cannot choose what it is called here, and it is
+ * truncated because the field tolerates 200 characters and a sentence does not.
+ */
+function describeSource(analysis: SemanticAnalysis): string {
+  switch (analysis.source) {
+    case 'local':
+      return 'on-device model';
+    case 'cloud':
+      return 'analysis service';
+    case 'server':
+      return analysis.model === undefined || analysis.model === ''
+        ? 'model server you configured'
+        : `model server you configured (${truncate(analysis.model, 60)})`;
+  }
 }

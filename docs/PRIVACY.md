@@ -5,17 +5,25 @@ summary is in the [README](../README.md#your-mail-stays-yours); this is the full
 
 ## Permissions
 
-Mapped 1:1 to `src/manifest.json`. There are two.
+Mapped 1:1 to `src/manifest.json`. Two are granted at install; one is offered and granted only if asked
+for.
 
 | Manifest entry | Why it is needed |
 | --- | --- |
 | `"host_permissions": ["https://mail.google.com/*"]` | The content script reads the open message from the page in order to analyse it. This is the only origin PhishLens can run on. |
-| `"permissions": ["storage"]` | Persists the four options-page settings (AI mode, backend URL, two display toggles). No message content is ever written to storage. |
+| `"permissions": ["storage"]` | Persists the options-page settings (AI mode, backend URL, model server address and model name, two display toggles). No message content is ever written to storage. |
+| `"optional_host_permissions": ["http://*/*", "https://*/*"]` | **Not granted at install.** If you configure your own model server, the options page requests access to that single origin on a click, and revokes it when the address changes. Chrome names the origin in the prompt. |
+
+The optional entry has to be a broad pattern because Chrome only grants what a pattern in the manifest
+covers, and a model server can be on any host and port. What matters is that it is *optional*: a default
+install holds two permissions, the grant is per-origin, made on a deliberate click, and visible in
+`chrome://extensions`. The alternative — putting `http://localhost/*` in `host_permissions` — would charge
+every user a permission for a feature most will never turn on.
 
 Not requested, and not needed: `activeTab`, `<all_urls>`, `tabs`, `scripting`, `webRequest`,
 `declarativeNetRequest`, `downloads`, `cookies`, `identity`, `nativeMessaging`. The content script is
-declared in the manifest, so `scripting` is unnecessary. Nothing is fetched, blocked, or rewritten, so the
-network permissions are unnecessary.
+declared in the manifest, so `scripting` is unnecessary. Nothing in a message is ever fetched, blocked, or
+rewritten, so the network permissions are unnecessary.
 
 Extension pages run under `script-src 'self'; object-src 'none'; base-uri 'none'`.
 
@@ -36,10 +44,19 @@ content script for as long as the message is on screen, then is dropped. It is n
 default configuration the semantic layer run inside the tab. Nothing touches the network. Results are
 cached in the tab, capped at 20 entries, and discarded when the tab closes.
 
-**Potentially leaving the browser** — nothing, unless AI mode is explicitly switched to *Cloud-assisted*
-**and** a backend URL is entered. Neither has a default value, so there is no configuration of the shipped
-extension in which data leaves the machine. What such a payload would contain, and what it would strip, is
-in [LOCAL-AI.md](LOCAL-AI.md#the-cloud-design-which-is-not-built).
+**Potentially leaving the browser** — nothing by default. Two modes can send message content, and both
+require an explicit choice *and* an address, neither of which has a default value:
+
+- *Your own model server* sends the sender's display name, the subject and a body excerpt to the address
+  you configure — and nothing else. No link targets, no sending domain, no attachment types, no recipient
+  address, no API key. Plain `http://` is only accepted for `localhost`, so in the intended setup this data
+  reaches a process on your own machine and no network. Point it at an `https://` address elsewhere and it
+  crosses a network to that address; the options page says so where you type it. See
+  [LOCAL-AI.md](LOCAL-AI.md#your-own-model-server).
+- *Cloud-assisted* is designed and inert, with no default backend. What such a payload would contain, and
+  what it would strip, is in [LOCAL-AI.md](LOCAL-AI.md#the-cloud-design-which-is-not-built).
+
+Nothing else ever leaves, in any configuration.
 
 Three choices follow from this:
 
@@ -91,11 +108,16 @@ request that leaks the fact the message was opened, and a malicious server never
 
 ### Extension permission abuse
 
-The attack surface is kept small enough to audit: two permissions, one origin, zero runtime dependencies,
-no remote code (MV3 forbids it and the CSP enforces it), no `eval` or `Function`. The service worker
-accepts only messages whose `sender.id` matches the extension's own id, which Chrome sets and a web page
-cannot forge, so a compromised page cannot drive the worker. The worker's only network capability is a POST
-to a URL the user configured.
+The attack surface is kept small enough to audit: two granted permissions, one origin, zero runtime
+dependencies, no remote code (MV3 forbids it and the CSP enforces it), no `eval` or `Function`. The service
+worker accepts only messages whose `sender.id` matches the extension's own id, which Chrome sets and a web
+page cannot forge, so a compromised page cannot drive the worker.
+
+The worker's only network capability is a request to a URL the user configured. Deliberately, **no message
+can supply an endpoint**: the analyze and list-models handlers read the address from settings, where it has
+already been through `normalizeModelBaseUrl`. Had the URL travelled in the message instead, anything able to
+send the worker a message would have had a general-purpose fetcher, which is a much larger thing to have
+built than a model client.
 
 ### API-key exposure
 
@@ -104,11 +126,12 @@ path adds an `Authorization` header.
 
 ### Data exfiltration
 
-The default configuration makes no network requests at all. Cloud mode requires two explicit user actions,
-and even then one reviewable function decides what leaves, with the recipient address, sender local part,
-filenames, full URLs and message ids removed. Message bodies are never persisted and never logged in a
-release build. There is no telemetry, no analytics, no error reporting, and no update channel beyond
-Chrome's own.
+The default configuration makes no network requests at all. Both network modes require an explicit mode
+choice, an address, and — for a model server — a permission grant Chrome prompts for by origin. Cloud mode
+additionally passes everything through one reviewable redaction function, with the recipient address, sender
+local part, filenames, full URLs and message ids removed. Message bodies are never persisted and never
+logged in a release build. There is no telemetry, no analytics, no error reporting, and no update channel
+beyond Chrome's own.
 
 ### What PhishLens does not defend against
 

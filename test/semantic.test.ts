@@ -297,6 +297,40 @@ describe('semantic layer: containment', () => {
     expect(result.classification).toBe('low');
   });
 
+  it('binds a self-hosted model to exactly the same ceiling', async () => {
+    // The point of the model-server mode is a better *explanation*, not a louder vote. Someone running a
+    // 70B model on their own GPU is still an input to the score, so this repeats the containment claim
+    // for that source rather than trusting that it is source-agnostic by construction.
+    const own = fixedAnalyzer(
+      semantic({ risk: 100, confidence: 1, source: 'server', model: 'qwen2.5:72b' }),
+    );
+    const result = await analyze(LEGITIMATE, own, { now: 0 });
+
+    expect(result.meta.semanticSource).toBe('server');
+    expect(result.categoryScores.llm).toBeLessThanOrEqual(CATEGORY_WEIGHTS.llm);
+    expect(result.classification).toBe('low');
+  });
+
+  it('names the model that judged the message, so the reading can be checked', () => {
+    const corroborating = analyzeDeterministic(PHISH, { now: 0 }).signals;
+    const [server] = semanticToSignals(
+      semantic({ source: 'server', model: 'qwen2.5:7b' }),
+      corroborating,
+    );
+    expect(server?.description).toContain('model server you configured (qwen2.5:7b)');
+
+    // The name is settings-derived, but it is still bounded: the field tolerates 200 characters and a
+    // sentence does not.
+    const [long] = semanticToSignals(
+      semantic({ source: 'server', model: 'm'.repeat(200) }),
+      corroborating,
+    );
+    expect(long?.description).not.toContain('m'.repeat(80));
+
+    const [unnamed] = semanticToSignals(semantic({ source: 'server' }), corroborating);
+    expect(unnamed?.description).toContain('model server you configured,');
+  });
+
   it('scales its contribution by confidence', () => {
     // Corroborated, because an uncorroborated verdict scores zero at any confidence and there would
     // be nothing to compare.

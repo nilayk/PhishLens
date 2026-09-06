@@ -51,7 +51,14 @@ inline in `dom-adapter.ts` is a bug — when Gmail changes its markup, one file 
 **The model cannot outvote the checks.** The `llm` category is capped at 15 points, contributes additively,
 and scores zero when no deterministic signal corroborates it. It cannot remove a finding, lower a score
 past a deterministic floor, or change a classification on its own. If a change would let it, the change is
-wrong, not the cap. See [docs/LOCAL-AI.md](docs/LOCAL-AI.md).
+wrong, not the cap. This holds for *every* source, including a large model a user runs themselves: the
+feature buys better reasons, not more weight. See [docs/LOCAL-AI.md](docs/LOCAL-AI.md).
+
+**All egress is in the service worker, to an address read from settings.** `src/background/index.ts` is the
+only file that may call `fetch`. Never let an endpoint arrive in a message — that turns the worker into a
+general-purpose fetcher. `http://` is valid only for loopback (`normalizeModelBaseUrl`); everything else
+needs `https:`. New network reach goes in `optional_host_permissions` and is requested per-origin from the
+options page on a click, so a default install keeps the two permissions the README advertises.
 
 **Severity floors are deterministic-only.** Never let a semantic signal set a floor, and keep
 `authentication.gmail_warning` excluded — Gmail renders that banner conditionally on the folder, so a floor

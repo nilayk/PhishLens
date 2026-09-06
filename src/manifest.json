@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "PhishLens",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Explainable phishing and social-engineering risk analysis for Gmail.",
   "minimum_chrome_version": "120",
   "icons": {
@@ -12,6 +12,7 @@
   },
   "permissions": ["storage"],
   "host_permissions": ["https://mail.google.com/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "background.js",
     "type": "module"

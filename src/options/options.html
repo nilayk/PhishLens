@@ -102,7 +102,8 @@
         margin-bottom: 10px;
         cursor: pointer;
       }
-      input[type="url"] {
+      input[type="url"],
+      input[type="text"] {
         width: 100%;
         padding: 8px 10px;
         border: 1px solid var(--line);
@@ -111,9 +112,46 @@
         color: var(--fg);
         font: inherit;
       }
-      input[type="url"]:disabled {
+      input[type="url"]:disabled,
+      input[type="text"]:disabled {
         opacity: 0.55;
         cursor: not-allowed;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .row input {
+        flex: 1;
+      }
+      button {
+        padding: 8px 14px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--card);
+        color: var(--fg);
+        font: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      button:hover:not(:disabled) {
+        border-color: var(--accent);
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .subfield {
+        margin-top: 14px;
+      }
+      .notice {
+        margin: 8px 0 0;
+        padding: 10px 12px;
+        border: 1px solid #d9a300;
+        border-radius: 6px;
+        background: color-mix(in srgb, #d9a300 12%, transparent);
+        font-size: 13px;
       }
       .field-error {
         min-height: 18px;
@@ -209,6 +247,64 @@
         </label>
 
         <label class="option">
+          <input type="radio" name="aiMode" value="server" />
+          <span>
+            <span class="option-title">Your own model server</span><br />
+            <span class="option-desc">
+              Uses a model you run yourself — Ollama, LM Studio, Docker Model Runner, llama.cpp — for
+              sharper reasoning than the browser's built-in model. The subject and body of the message
+              you are reading are sent to the address you give below, so keep it on this machine unless
+              you mean otherwise.
+            </span>
+          </span>
+        </label>
+
+        <div id="serverField" hidden>
+          <label for="modelBaseUrl" class="option-title">Server address</label>
+          <p class="hint">
+            The OpenAI-compatible base URL, exactly as your runner documents it:
+            <code>http://localhost:11434/v1</code> for Ollama, <code>http://localhost:1234/v1</code> for
+            LM Studio, <code>http://localhost:12434/engines/v1</code> for Docker Model Runner. Plain
+            <code>http://</code> is accepted only for <code>localhost</code>; anywhere else needs
+            <code>https://</code>.
+          </p>
+          <div class="row">
+            <input
+              type="url"
+              id="modelBaseUrl"
+              placeholder="http://localhost:11434/v1"
+              spellcheck="false"
+              autocomplete="off"
+              aria-describedby="serverError"
+            />
+            <button type="button" id="connect">Connect</button>
+          </div>
+          <p class="field-error" id="serverError" role="alert"></p>
+          <p class="notice" id="serverRemoteWarning" hidden>
+            This address is not on this machine. The subject and body of every message you open will be
+            sent across the network to it. Only use an address you control, and only over
+            <code>https://</code>.
+          </p>
+
+          <div class="subfield">
+            <label for="modelName" class="option-title">Model</label>
+            <p class="hint">
+              Filled in by <strong>Connect</strong> from what the server has loaded, or type the name
+              yourself. A 7–8B instruction-tuned model is enough; the answer is a short JSON verdict.
+            </p>
+            <input
+              type="text"
+              id="modelName"
+              list="modelList"
+              placeholder="qwen2.5:7b"
+              spellcheck="false"
+              autocomplete="off"
+            />
+            <datalist id="modelList"></datalist>
+          </div>
+        </div>
+
+        <label class="option">
           <input type="radio" name="aiMode" value="cloud" />
           <span>
             <span class="option-title">Cloud-assisted</span><br />
@@ -280,6 +376,13 @@
             <td><code>storage</code></td>
             <td>Persist the settings on this page. No message content is ever stored.</td>
           </tr>
+          <tr>
+            <td><code>optional_host_permissions</code></td>
+            <td>
+              Not granted at install. If you configure your own model server, <strong>Connect</strong>
+              asks for access to that one address, and only that one. Clearing the field gives it back.
+            </td>
+          </tr>
         </tbody>
       </table>
       <p class="hint">
@@ -291,7 +394,9 @@
       <p class="hint">
         Message content is read into memory, analysed, and discarded. Bodies are never written to
         storage or logged in a release build. Results are cached in the tab only for as long as the tab
-        is open. With AI off or on-device, nothing derived from a message leaves the browser.
+        is open. With AI off or on-device, nothing derived from a message leaves the browser. With your
+        own model server, the display name, subject, and body excerpt go to the address you set above
+        and nowhere else — no link targets, no recipient address, no attachments, and no API key.
       </p>
 
       <footer>

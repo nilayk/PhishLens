@@ -7,11 +7,21 @@
  * "apply" step.
  *
  * The page's markup is static and ships with the extension, so it is written in `options.html`. Nothing
- * here interpolates message-derived content — the only user-supplied string is the backend URL, which
- * is set via `value`, never parsed as HTML.
+ * here interpolates message-derived content; the user-supplied strings — the backend URL, the model
+ * server address and the model name — are set via `value`, and model names returned by a server become
+ * `option.value`, never markup.
+ *
+ * It is also where the one optional permission is requested. Access to a model server is asked for
+ * per-address, on a click, and handed back when the address changes, so a default install keeps the two
+ * permissions the README advertises.
  */
 import { sendMessage } from '../shared/messaging.js';
-import { DEFAULT_SETTINGS, normalizeBackendUrl } from '../shared/settings.js';
+import {
+  DEFAULT_SETTINGS,
+  isLoopbackHost,
+  normalizeBackendUrl,
+  normalizeModelBaseUrl,
+} from '../shared/settings.js';
 import type { AiMode, Settings } from '../shared/types.js';
 
 declare const __PHISHLENS_VERSION__: string;
@@ -25,7 +35,23 @@ function requireElement<T extends HTMLElement>(id: string, ctor: new () => T): T
 }
 
 function parseAiMode(value: string): AiMode | null {
-  return value === 'off' || value === 'local' || value === 'cloud' ? value : null;
+  return value === 'off' || value === 'local' || value === 'cloud' || value === 'server'
+    ? value
+    : null;
+}
+
+/**
+ * The match pattern for a validated base URL, as narrow as Chrome allows: one scheme, one host, one
+ * port. Chrome grants by origin, so the path prefix cannot be part of it — `/engines/v1` is not a
+ * separate permission from `/`.
+ */
+function originPattern(baseUrl: string): string | null {
+  if (baseUrl === '') return null;
+  try {
+    return `${new URL(baseUrl).origin}/*`;
+  } catch {
+    return null;
+  }
 }
 
 class OptionsPage {
@@ -33,12 +59,23 @@ class OptionsPage {
   readonly #backendField = requireElement('backendField', HTMLDivElement);
   readonly #backendInput = requireElement('backendBaseUrl', HTMLInputElement);
   readonly #backendError = requireElement('backendError', HTMLParagraphElement);
+  readonly #serverField = requireElement('serverField', HTMLDivElement);
+  readonly #modelBaseUrl = requireElement('modelBaseUrl', HTMLInputElement);
+  readonly #modelName = requireElement('modelName', HTMLInputElement);
+  readonly #modelList = requireElement('modelList', HTMLDataListElement);
+  readonly #connect = requireElement('connect', HTMLButtonElement);
+  readonly #serverError = requireElement('serverError', HTMLParagraphElement);
+  readonly #serverRemoteWarning = requireElement('serverRemoteWarning', HTMLParagraphElement);
   readonly #showBadgeWhenLow = requireElement('showBadgeWhenLow', HTMLInputElement);
   readonly #highlightEnabled = requireElement('highlightEnabled', HTMLInputElement);
   readonly #status = requireElement('status', HTMLDivElement);
   readonly #version = requireElement('version', HTMLSpanElement);
 
   #statusTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Kept so a changed address hands back the access granted to the previous one. */
+  #grantedPattern: string | null = null;
+  /** Last rendered settings, so the granted-access state can be repainted without re-reading them. */
+  #current: Settings = { ...DEFAULT_SETTINGS };
 
   async init(): Promise<void> {
     this.#version.textContent = `Version ${typeof __PHISHLENS_VERSION__ === 'undefined' ? 'dev' : __PHISHLENS_VERSION__}`;
@@ -48,6 +85,9 @@ class OptionsPage {
       response !== null && response.ok && response.type === 'SETTINGS'
         ? response.settings
         : { ...DEFAULT_SETTINGS };
+    // Access is checked before the first paint, since whether it is held is part of what the page has to
+    // report: a configured address without a grant looks finished and silently fails.
+    await this.#syncGrantedPattern(settings);
     this.#render(settings);
 
     for (const input of this.#modeInputs) {
@@ -72,18 +112,62 @@ class OptionsPage {
     this.#backendInput.addEventListener('change', () => {
       void this.#saveBackendUrl();
     });
+
+    this.#modelBaseUrl.addEventListener('change', () => {
+      void this.#saveModelBaseUrl();
+    });
+
+    this.#modelName.addEventListener('change', () => {
+      void this.#save({ modelName: this.#modelName.value.trim() });
+    });
+
+    // Access to the server is requested here rather than when the URL is saved, because
+    // `chrome.permissions.request` needs a real user gesture — and because a permission prompt that
+    // appears while someone is still typing reads as the extension overstepping.
+    this.#connect.addEventListener('click', () => {
+      void this.#connectToServer();
+    });
   }
 
   #render(settings: Settings): void {
+    this.#current = settings;
     for (const input of this.#modeInputs) input.checked = input.value === settings.aiMode;
     this.#backendField.hidden = settings.aiMode !== 'cloud';
     this.#backendInput.value = settings.backendBaseUrl;
+    this.#serverField.hidden = settings.aiMode !== 'server';
+    this.#modelBaseUrl.value = settings.modelBaseUrl;
+    this.#modelName.value = settings.modelName;
     this.#showBadgeWhenLow.checked = settings.showBadgeWhenLow;
     this.#highlightEnabled.checked = settings.highlightEnabled;
     this.#backendError.textContent =
       settings.aiMode === 'cloud' && settings.backendBaseUrl === ''
         ? 'Cloud analysis stays inactive until a valid https:// URL is set.'
         : '';
+    this.#renderServerState(settings);
+  }
+
+  #renderServerState(settings: Settings): void {
+    this.#serverRemoteWarning.hidden = !isOffMachine(settings.modelBaseUrl);
+    this.#connect.disabled = settings.modelBaseUrl === '';
+
+    if (settings.aiMode !== 'server') {
+      this.#serverError.textContent = '';
+      return;
+    }
+
+    const granted =
+      settings.modelBaseUrl !== '' && this.#grantedPattern === originPattern(settings.modelBaseUrl);
+
+    this.#serverError.textContent =
+      settings.modelBaseUrl === ''
+        ? 'Set the server address, then choose a model. Until both are set, analysis runs without a model.'
+        : !granted
+          ? // Both fields can be filled in by hand, which looks complete and fails on every request,
+            // since Chrome blocks the call before the server ever sees it.
+            'Press Connect to allow PhishLens to reach this address. Without that, every request is blocked by Chrome.'
+          : settings.modelName === ''
+            ? 'Choose a model. Press Connect to list what this server has loaded.'
+            : '';
   }
 
   async #saveBackendUrl(): Promise<void> {
@@ -97,6 +181,83 @@ class OptionsPage {
     await this.#save({ backendBaseUrl: normalized });
   }
 
+  async #saveModelBaseUrl(): Promise<void> {
+    const raw = this.#modelBaseUrl.value.trim();
+    const normalized = normalizeModelBaseUrl(raw);
+
+    if (raw !== '' && normalized === '') {
+      this.#serverError.textContent = isOffMachine(raw)
+        ? 'Use https:// for a server that is not on this machine. Plain http:// is only accepted for localhost.'
+        : 'Enter the full base URL including the scheme, for example http://localhost:11434/v1';
+      return;
+    }
+
+    // Access granted to an address that is no longer configured is access nobody asked for.
+    const next = originPattern(normalized);
+    if (this.#grantedPattern !== null && this.#grantedPattern !== next) {
+      await revokeOrigin(this.#grantedPattern);
+      this.#grantedPattern = null;
+    }
+
+    this.#modelList.replaceChildren();
+    await this.#save({ modelBaseUrl: normalized });
+  }
+
+  /**
+   * Requests access to the configured address, then asks the server what it has loaded. Doing both
+   * behind one button means a single click takes the user from an address to a working configuration,
+   * and that a failure has one obvious place to report itself.
+   */
+  async #connectToServer(): Promise<void> {
+    const pattern = originPattern(normalizeModelBaseUrl(this.#modelBaseUrl.value.trim()));
+    if (pattern === null) {
+      this.#serverError.textContent = 'Set a valid server address first.';
+      return;
+    }
+
+    this.#connect.disabled = true;
+    try {
+      const granted = await chrome.permissions.request({ origins: [pattern] });
+      if (!granted) {
+        this.#serverError.textContent =
+          'Access to that address was declined, so PhishLens cannot reach the server.';
+        return;
+      }
+      this.#grantedPattern = pattern;
+
+      const response = await sendMessage({ type: 'LIST_MODELS' });
+      if (response === null || !response.ok || response.type !== 'MODELS') {
+        const reason = response !== null && !response.ok ? response.error : 'no response';
+        this.#serverError.textContent = `Could not reach the server (${reason}). Check that it is running, and that it accepts requests from extensions — Ollama needs OLLAMA_ORIGINS to include chrome-extension://*.`;
+        return;
+      }
+
+      this.#modelList.replaceChildren(
+        ...response.models.map((model) => {
+          const option = document.createElement('option');
+          option.value = model;
+          return option;
+        }),
+      );
+
+      if (response.models.length === 0) {
+        this.#serverError.textContent =
+          'Connected, but the server reports no models. Pull or load one, then press Connect again.';
+        return;
+      }
+
+      // One model is the common case, and asking someone to choose from a list of one is busywork.
+      const only = response.models[0];
+      if (this.#modelName.value.trim() === '' && response.models.length === 1 && only !== undefined) {
+        await this.#save({ modelName: only });
+      }
+      this.#renderServerState(this.#current);
+      this.#showStatus(`Connected — ${String(response.models.length)} model(s) available`);
+    } finally {
+      this.#connect.disabled = this.#modelBaseUrl.value.trim() === '';
+    }
+  }
+
   async #save(patch: Partial<Settings>): Promise<void> {
     const response = await sendMessage({ type: 'SET_SETTINGS', patch });
     if (response === null || !response.ok || response.type !== 'SETTINGS') {
@@ -107,6 +268,18 @@ class OptionsPage {
     this.#showStatus('Saved');
   }
 
+  /** Reflects access that is already held, so a returning user is not asked for it twice. */
+  async #syncGrantedPattern(settings: Settings): Promise<void> {
+    const pattern = originPattern(settings.modelBaseUrl);
+    if (pattern === null) return;
+    try {
+      const held = await chrome.permissions.contains({ origins: [pattern] });
+      if (held) this.#grantedPattern = pattern;
+    } catch {
+      // An unsupported or rejected query is not worth surfacing: Connect will ask again.
+    }
+  }
+
   #showStatus(text: string): void {
     this.#status.textContent = text;
     this.#status.dataset['visible'] = 'true';
@@ -114,6 +287,27 @@ class OptionsPage {
     this.#statusTimer = setTimeout(() => {
       this.#status.dataset['visible'] = 'false';
     }, STATUS_MS);
+  }
+}
+
+/**
+ * Whether an address as typed would send content off this machine. Deliberately lenient about the rest
+ * of the URL: this only decides whether to show a warning, and a half-typed address that cannot be
+ * parsed is not yet worth warning about.
+ */
+function isOffMachine(value: string): boolean {
+  try {
+    return !isLoopbackHost(new URL(value).hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function revokeOrigin(pattern: string): Promise<void> {
+  try {
+    await chrome.permissions.remove({ origins: [pattern] });
+  } catch {
+    // Chrome refuses to remove a permission it did not grant, which is the harmless case.
   }
 }
 

@@ -14,6 +14,7 @@
  */
 import { analyzeDeterministic, analyze, withSemanticStatus } from '../src/analysis/engine.js';
 import type {
+  AiMode,
   AnalysisResult,
   Classification,
   EmailMessage,
@@ -43,6 +44,12 @@ const SEMANTIC_STATES: readonly SemanticStatus[] = [
 
 const VIEWS: readonly View[] = ['full', 'badges', 'card'];
 
+/**
+ * The AI section names whichever analyzer ran, so each mode is its own state. Without this the wording
+ * for a model server or the cloud path could only be seen by configuring one.
+ */
+const AI_MODES: readonly AiMode[] = ['local', 'server', 'cloud', 'off'];
+
 /** Ascending, so `view=badges` reads from safest to worst. */
 const BANDS: readonly Classification[] = ['low', 'caution', 'suspicious', 'high-risk'];
 
@@ -55,10 +62,13 @@ const fixtures: Fixture[] = (JSON.parse(__PHISHLENS_FIXTURES__) as RawFixture[])
  * `reasons` that stay clear of domains and links — the boundary `llm/prompt.ts` draws, since those are
  * claims the model cannot verify and deterministic code already checks.
  */
-function cannedVerdict(email: EmailMessage): SemanticAnalysis {
+function cannedVerdict(email: EmailMessage, aiMode: AiMode): SemanticAnalysis {
   const urgent = /verif|suspend|immediat|within 24|expir|urgent/iu.test(
     `${email.subject ?? ''} ${email.bodyText}`,
   );
+  // `off` produces no verdict at all, so its source value is never rendered.
+  const source = aiMode === 'off' ? 'local' : aiMode;
+  const model = aiMode === 'server' ? 'qwen2.5:7b' : 'harness-canned';
 
   return urgent
     ? {
@@ -70,24 +80,24 @@ function cannedVerdict(email: EmailMessage): SemanticAnalysis {
           'Uses an impersonal greeting for an account-specific claim',
         ],
         confidence: 0.82,
-        source: 'local',
-        model: 'harness-canned',
+        source,
+        model,
       }
     : {
         risk: 12,
         categories: ['benign'],
         reasons: ['Reads as routine correspondence with no request for credentials or payment'],
         confidence: 0.74,
-        source: 'local',
-        model: 'harness-canned',
+        source,
+        model,
       };
 }
 
-function cannedAnalyzer(email: EmailMessage): SemanticAnalyzer {
+function cannedAnalyzer(email: EmailMessage, aiMode: AiMode): SemanticAnalyzer {
   return {
     id: 'harness',
     isAvailable: () => Promise.resolve(true),
-    analyze: () => Promise.resolve(cannedVerdict(email)),
+    analyze: () => Promise.resolve(cannedVerdict(email, aiMode)),
   };
 }
 
@@ -97,8 +107,12 @@ function cannedAnalyzer(email: EmailMessage): SemanticAnalyzer {
  * definition, so stamping the status onto a deterministic result is exactly what the engine would
  * return.
  */
-async function resultFor(email: EmailMessage, semantic: SemanticStatus): Promise<AnalysisResult> {
-  if (semantic === 'ready') return analyze(email, cannedAnalyzer(email));
+async function resultFor(
+  email: EmailMessage,
+  semantic: SemanticStatus,
+  aiMode: AiMode,
+): Promise<AnalysisResult> {
+  if (semantic === 'ready') return analyze(email, cannedAnalyzer(email, aiMode));
   const { context: _context, ...deterministic } = analyzeDeterministic(email);
   return withSemanticStatus(deterministic, semantic);
 }
@@ -191,9 +205,14 @@ const panel = new Panel({
 
 const stage = document.querySelector<HTMLElement>('#stage');
 
-async function renderFull(fixture: Fixture, semantic: SemanticStatus, cardOpen: boolean): Promise<void> {
+async function renderFull(
+  fixture: Fixture,
+  semantic: SemanticStatus,
+  aiMode: AiMode,
+  cardOpen: boolean,
+): Promise<void> {
   if (stage === null) return;
-  const result = await resultFor(fixture.email, semantic);
+  const result = await resultFor(fixture.email, semantic, aiMode);
   const { row, right } = headerRow(fixture.email);
 
   stage.replaceChildren(
@@ -207,7 +226,7 @@ async function renderFull(fixture: Fixture, semantic: SemanticStatus, cardOpen: 
     }),
   );
 
-  const view: PanelView = { result, aiMode: 'local', email: fixture.email, semantic };
+  const view: PanelView = { result, aiMode, email: fixture.email, semantic };
   const badge = new Badge({
     onActivate: () => {
       panel.toggle(view);
@@ -235,7 +254,11 @@ async function renderBadges(semantic: SemanticStatus): Promise<void> {
   stage.replaceChildren(rows);
 
   const scored = await Promise.all(
-    fixtures.map(async (fixture) => ({ fixture, result: await resultFor(fixture.email, semantic) })),
+    // The badge shows a score, which no mode changes, so this view is deliberately mode-agnostic.
+    fixtures.map(async (fixture) => ({
+      fixture,
+      result: await resultFor(fixture.email, semantic, 'local'),
+    })),
   );
 
   for (const band of BANDS) {
@@ -249,13 +272,17 @@ async function renderBadges(semantic: SemanticStatus): Promise<void> {
   }
 }
 
-async function renderCardOnly(fixture: Fixture, semantic: SemanticStatus): Promise<void> {
+async function renderCardOnly(
+  fixture: Fixture,
+  semantic: SemanticStatus,
+  aiMode: AiMode,
+): Promise<void> {
   if (stage === null) return;
   const frame = el('div', { class: 'card-frame' });
   stage.replaceChildren(frame);
 
-  const result = await resultFor(fixture.email, semantic);
-  panel.open({ result, aiMode: 'local', email: fixture.email, semantic });
+  const result = await resultFor(fixture.email, semantic, aiMode);
+  panel.open({ result, aiMode, email: fixture.email, semantic });
 
   // The card is built as a child of <body>, as it is in Gmail. Moving the host into the frame leaves
   // the component itself untouched.
@@ -298,19 +325,20 @@ async function render(): Promise<void> {
   reportViewport();
 
   const semantic = pick(params.get('semantic'), SEMANTIC_STATES, 'ready');
+  const aiMode = pick(params.get('ai'), AI_MODES, 'local');
   const view = pick(params.get('view'), VIEWS, 'full');
   document.body.dataset['view'] = view;
   const cardOpen = params.get('card') === '1';
   const fixture = fixtures.find((f) => f.name === params.get('fixture')) ?? fixtures[0];
   if (fixture === undefined) return;
 
-  syncControls(fixture.name, semantic, view, cardOpen);
+  syncControls(fixture.name, semantic, aiMode, view, cardOpen);
 
   if (view === 'badges') await renderBadges(semantic);
   // `card` shows the card alone on an empty page. It stays pinned bottom-right as it is in Gmail, so
   // sizing the window to the card crops to it exactly without any screenshot post-processing.
-  else if (view === 'card') await renderCardOnly(fixture, semantic);
-  else await renderFull(fixture, semantic, cardOpen);
+  else if (view === 'card') await renderCardOnly(fixture, semantic, aiMode);
+  else await renderFull(fixture, semantic, aiMode, cardOpen);
 }
 
 function pick<T extends string>(value: string | null, allowed: readonly T[], fallback: T): T {
@@ -342,11 +370,13 @@ function setParam(key: string, value: string): void {
 function syncControls(
   fixtureName: string,
   semantic: SemanticStatus,
+  aiMode: AiMode,
   view: View,
   cardOpen: boolean,
 ): void {
   fillSelect('#fixture', fixtures.map((f) => f.name), fixtureName);
   fillSelect('#semantic', [...SEMANTIC_STATES], semantic);
+  fillSelect('#ai', [...AI_MODES], aiMode);
   fillSelect('#view', [...VIEWS], view);
 
   const card = document.querySelector<HTMLInputElement>('#card');
@@ -371,6 +401,7 @@ function fillSelect(selector: string, options: string[], selected: string): void
 for (const [selector, key] of [
   ['#fixture', 'fixture'],
   ['#semantic', 'semantic'],
+  ['#ai', 'ai'],
   ['#view', 'view'],
 ] as const) {
   document.querySelector<HTMLSelectElement>(selector)?.addEventListener('change', (event) => {
