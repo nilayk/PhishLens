@@ -8,6 +8,9 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# UI harness bundle, rebuilt by `npm run harness`
+harness/.build/
+
 # Local environment
 .env
 .env.*

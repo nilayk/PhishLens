@@ -12,6 +12,8 @@
     "build": "node scripts/build.mjs",
     "build:dev": "node scripts/build.mjs --dev",
     "dev": "node scripts/build.mjs --dev --watch",
+    "harness": "node scripts/harness.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
     "clean": "node scripts/build.mjs --clean-only",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -21,14 +23,13 @@
     "test:coverage": "vitest run --coverage",
     "verify": "npm run lint && npm run typecheck && npm run test"
   },
-  "dependencies": {},
   "devDependencies": {
     "@types/chrome": "^0.0.287",
     "@types/node": "^22.10.2",
-    "esbuild": "^0.24.2",
+    "esbuild": "^0.28.2",
     "eslint": "^9.17.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.2",
-    "vitest": "^2.1.8"
+    "vitest": "^3.2.7"
   }
 }

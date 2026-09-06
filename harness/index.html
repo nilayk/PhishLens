@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PhishLens UI harness</title>
+    <!--
+      A stand-in mail reader for developing and screenshotting the badge and card.
+
+      Deliberately not an imitation of Gmail: it reproduces the one structural thing the components
+      depend on — a header row with a right-hand cluster the badge is appended into — and otherwise
+      stays neutral. The components themselves live in shadow roots, so nothing here can style them,
+      which is the same guarantee they get inside Gmail.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        --page: #ffffff;
+        --ink: #202124;
+        --ink-dim: #5f6368;
+        --rule: #e8eaed;
+        --chrome: #f1f3f4;
+        --accent: #1a73e8;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --page: #1f2023;
+          --ink: #e8eaed;
+          --ink-dim: #9aa0a6;
+          --rule: #35363a;
+          --chrome: #2a2b2e;
+          --accent: #8ab4f8;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--page);
+        color: var(--ink);
+        font:
+          14px/1.5 -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          Roboto,
+          Arial,
+          sans-serif;
+      }
+
+      /* Development controls. Hidden with ?bare=1 so screenshots contain only the product. */
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        padding: 10px 16px;
+        background: var(--chrome);
+        border-bottom: 1px solid var(--rule);
+        font-size: 12px;
+      }
+
+      .controls label {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        color: var(--ink-dim);
+      }
+
+      .controls select {
+        font: inherit;
+        padding: 3px 6px;
+      }
+
+      .controls .hint {
+        margin-left: auto;
+        color: var(--ink-dim);
+      }
+
+      body[data-bare='1'] .controls {
+        display: none;
+      }
+
+      /* Narrow enough that the card does not sit over the text in a screenshot. In Gmail it may. */
+      .reader {
+        max-width: 640px;
+        padding: 24px 28px 60px;
+      }
+
+      .subject {
+        margin: 0 0 18px;
+        font-size: 21px;
+        font-weight: 400;
+        letter-spacing: -0.2px;
+      }
+
+      /* The badge is appended into .header-right, mirroring SELECTORS.headerRightCluster in Gmail. */
+      .header {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--rule);
+      }
+
+      .avatar {
+        flex: none;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        font-weight: 500;
+        text-transform: uppercase;
+      }
+
+      .who {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .sender-name {
+        font-weight: 600;
+      }
+
+      .sender-address,
+      .recipient {
+        color: var(--ink-dim);
+      }
+
+      .header-right {
+        flex: none;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        color: var(--ink-dim);
+        white-space: nowrap;
+      }
+
+      .body {
+        padding: 18px 0 0;
+        white-space: pre-wrap;
+      }
+
+      .body a {
+        color: var(--accent);
+      }
+
+      .attachments {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 20px;
+        padding-top: 14px;
+        border-top: 1px solid var(--rule);
+      }
+
+      .attachment {
+        border: 1px solid var(--rule);
+        border-radius: 4px;
+        padding: 6px 10px;
+        font-size: 12px;
+        color: var(--ink-dim);
+      }
+
+      /*
+        ?view=card — the card alone, for a close-up image.
+
+        The card is laid out in normal flow here (see flattenForStillImage), so the frame only supplies
+        room for its drop shadow. 16px, matching the inset it keeps from the window edge in Gmail.
+      */
+      .card-frame {
+        display: inline-block;
+        padding: 16px;
+      }
+
+      /* Transparent so the capture has no background of its own to clash with a README theme. */
+      body[data-view='card'] {
+        background: transparent;
+      }
+
+      /* ?view=badges — one header row per classification, for a single explanatory image. */
+      .rows {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 16px 20px;
+      }
+
+      .rows .header {
+        border-bottom: none;
+        padding: 10px 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="controls">
+      <label>Message <select id="fixture"></select></label>
+      <label>AI state <select id="semantic"></select></label>
+      <label>View <select id="view"></select></label>
+      <label><input type="checkbox" id="card" /> Card open</label>
+      <span class="hint" id="hint"></span>
+    </div>
+    <div id="stage"></div>
+    <script src="./.build/main.js"></script>
+  </body>
+</html>
