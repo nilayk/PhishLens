@@ -669,11 +669,17 @@ figure is the highest floor any dev dependency imposes — Vitest 5 wants `^22.1
 prompted the change.
 
 CI then builds and uploads the extension, so every commit carries an installable package rather than
-requiring a reviewer to have a toolchain. Three checks run before the upload, each guarding a failure that
-is invisible until someone tries to load the result: every file named by the manifest exists, the manifest
-version agrees with `package.json`, and no sourcemap reference survived into the production bundle.
-`release.yml` does the same on a `v*` tag and additionally refuses to publish when the tag disagrees with
-`package.json`, since the manifest version is generated from that field.
+requiring a reviewer to have a toolchain. `scripts/check-dist.mjs` runs before the upload, guarding failures
+that are invisible until someone tries to load the result: a file the manifest names that the build did not
+emit, a dead `<script>` in `options.html`, a manifest version out of step with `package.json`, a sourcemap
+reference surviving into production. It derives the file list from the manifest instead of hardcoding one,
+because a hardcoded list only covers what someone remembered to add to it and stops covering the manifest
+the moment the manifest grows a reference.
+
+`release.yml` runs the same script on a `v*` tag before packaging, and additionally refuses to publish when
+the tag disagrees with `package.json`. Sharing the script is the point: an Actions artifact can be replaced
+by pushing again, but a release asset is public and permanent, so the download people actually use must not
+be the least-checked output.
 
 **The UI harness** (`npm run harness`) exists because of §1.1: the badge and card only have meaning inside
 a Gmail message, so there is nothing a dev server can preview. The harness closes that gap without

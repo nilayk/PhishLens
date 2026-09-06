@@ -69,23 +69,11 @@ jobs:
           echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
           echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
+      # Guards against shipping something Chrome would reject, or that works but leaks build detail. The
+      # release workflow runs the same script before publishing, so the download and the artifact are held
+      # to one standard.
       - name: Check the build is loadable
-        # Cheap guards against shipping something Chrome would reject or that leaks build detail:
-        # every file the manifest needs must exist, and a production bundle must carry no sourcemap.
-        run: |
-          set -euo pipefail
-          for f in manifest.json content.js background.js options.html; do
-            test -f "dist/$f" || { echo "::error::dist/$f is missing"; exit 1; }
-          done
-          node -e "
-            const m = require('./dist/manifest.json');
-            if (m.manifest_version !== 3) throw new Error('expected manifest_version 3');
-            if (m.version !== require('./package.json').version) throw new Error('manifest version drifted from package.json');
-          "
-          if grep -q 'sourceMappingURL' dist/content.js; then
-            echo "::error::production bundle contains a sourcemap reference"
-            exit 1
-          fi
+        run: npm run check:dist
 
       # Downloading this artifact gives you a zip with manifest.json at its root: unzip it and load it
       # with "Load unpacked", or upload the zip itself to the Chrome Web Store dashboard.

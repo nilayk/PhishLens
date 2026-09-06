@@ -45,6 +45,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      # A published asset cannot be quietly replaced the way an artifact can, so it is checked before the
+      # zip exists rather than after someone reports that Chrome refused it.
+      - name: Check the build is loadable
+        run: npm run check:dist
+
       # Zipped from inside dist/ so manifest.json sits at the archive root, which is what both "Load
       # unpacked" and the Web Store dashboard expect.
       - name: Package

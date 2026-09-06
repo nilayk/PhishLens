@@ -124,10 +124,13 @@ Fixture philosophy and the both-directions assertion are described in
 
 `.github/workflows/ci.yml` runs `lint`, `typecheck` and `test` on Node 22.13.0 — the `engines` floor,
 because an untested promise is a guess — as well as the current LTS. It then builds and uploads the
-extension as an artifact, so every commit has an installable package attached. Before uploading it checks
-the three things a broken build would otherwise ship silently: that every file the manifest names exists,
-that the manifest version matches `package.json`, and that no sourcemap reference survived into the
-production bundle.
+extension as an artifact, so every commit has an installable package attached. Before uploading, it runs
+`npm run check:dist` (`scripts/check-dist.mjs`), which catches what a broken build would otherwise ship
+silently: a file the manifest names but the build did not produce, a `<script>` in `options.html` pointing
+at a renamed bundle, a manifest version out of step with `package.json`, or a sourcemap reference left in a
+production bundle. The file list is read out of the manifest rather than hardcoded, so adding a reference to
+the manifest extends the check automatically. Run it locally after `npm run build` if you are touching the
+build.
 
 Dependabot (`.github/dependabot.yml`) proposes weekly updates, grouped into one pull request per ecosystem
 so the noise stays proportionate to a dev-only dependency tree.

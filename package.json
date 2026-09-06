@@ -15,6 +15,7 @@
     "harness": "node scripts/harness.mjs",
     "screenshots": "node scripts/screenshots.mjs",
     "clean": "node scripts/build.mjs --clean-only",
+    "check:dist": "node scripts/check-dist.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
