@@ -12,6 +12,13 @@ updates:
     groups:
       dev-dependencies:
         patterns: ['*']
+    ignore:
+      # TypeScript's major version is gated by typescript-eslint's peer range, currently
+      # `>=4.8.4 <6.1.0`. Proposing TypeScript 7 produces a pull request npm cannot install at all, so
+      # the update fails at `npm ci` rather than at a check that explains itself. Adopt a TypeScript
+      # major deliberately, together with a typescript-eslint release that supports it, and lift this.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
 
   # Without this, action versions silently rot; they were three majors behind within months.
   - package-ecosystem: github-actions
