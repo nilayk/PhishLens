@@ -3,6 +3,12 @@
 PhishLens is a Chrome MV3 extension that produces an **explainable** 0–100 phishing/security risk
 score for the Gmail message the user is currently reading.
 
+This is the design record: what was decided, and why the obvious alternative was rejected. It is the
+document to read before changing anything structural, and the one place where reasoning is preserved
+rather than summarised. For what the system does rather than why, see
+[DETECTION.md](DETECTION.md), [LOCAL-AI.md](LOCAL-AI.md), [PRIVACY.md](PRIVACY.md) and
+[DEVELOPMENT.md](DEVELOPMENT.md).
+
 The guiding principle:
 
 > Use deterministic security signals for things a computer can *know*, and use an LLM only for
@@ -53,7 +59,7 @@ require the app to be built by Vite.
 | Lint       | ESLint 9 flat config + `typescript-eslint` `strictTypeChecked`              |
 | Framework  | **None.** See §5.                                                          |
 | Runtime deps | **Zero.** All detection is standard library + `URL` + `Intl`.             |
-| Node       | `>=20.11.0` (`engines` in `package.json`, documented in README)             |
+| Node       | `>=20.11.0` (`engines` in `package.json`, and the CI floor)                 |
 
 Lint rules explicitly enforced as requested: `@typescript-eslint/no-explicit-any` (error),
 `@typescript-eslint/no-unused-vars` (error), `@typescript-eslint/no-floating-promises` (error).
@@ -116,8 +122,7 @@ background service worker holds no analysis state at all.**
 - The session is **defensively re-created**: `chrome-prompt.ts` treats a session as disposable and
   recreates it if any call throws (`InvalidStateError` after a session is destroyed by the browser,
   quota exhaustion, etc.). So even the content-script cache is not *assumed* to be alive.
-- The session is **warmed at startup and used by one caller at a time** — see §2.2, which is where a
-  real bug lived.
+- The session is **warmed at startup and used by one caller at a time** — see §2.2.
 - **The service worker does exactly three things**, all of which are safe to lose at any instant:
   1. `GET_SETTINGS` / `SET_SETTINGS` — read/write `chrome.storage.sync`, no in-memory cache.
   2. `CLOUD_ANALYZE` — the single future egress point (see §6). It is a pure request/response
@@ -138,14 +143,13 @@ outstanding is rejected. Combined with this adapter's policy of treating a rejec
 poisoned session and destroying it, two overlapping calls do not degrade to one succeeding — **both
 fail**, because the survivor's session is torn down underneath it.
 
-That produced a reproducible symptom: *no AI assessment on the first email opened after loading Gmail,
-and a working assessment on every message after it.* The cause is the observer doing its job. The view
-signature includes body length (§3) precisely so that a header rendered before its body is not analysed
-as an empty message — and Gmail fills a thread in stages, so the first message legitimately reports two
-or three times as it arrives. Each report started an inference, they overlapped, and every one of them
-lost. Later messages arrive in a single render, never overlap, and always worked.
+Overlap is not an edge case here, it is what the observer produces by design. The view signature includes
+body length (§3) precisely so that a header rendered before its body is not analysed as an empty message,
+and Gmail fills a thread in stages, so the first message opened after a page load legitimately reports
+two or three times as it arrives. Unserialised, the symptom is *no AI assessment on the first email and a
+working one on every message after it* — later messages arrive in a single render and never overlap.
 
-Three changes, each addressing a different part of it:
+Three mechanisms, each addressing a different part of it:
 
 - **Serialisation.** Every use of the session goes through a queue (`#enqueue`), whose tail is a promise
   that cannot reject, so one failed inference does not break the chain behind it.
@@ -162,28 +166,20 @@ Three changes, each addressing a different part of it:
 
 #### 2.2.1 A cancelled attempt is not an answer
 
-Cancellation created a second bug of its own, with a symptom that looked like the first: open a message,
-navigate away before the model answers, come back, and the card said *the on-device model did not return
-a usable assessment* — permanently, for that message, until Gmail was reloaded.
+Cancellation introduces a distinction the pipeline has to preserve: *a conclusion* versus *a moment*. An
+abort resolves the analyzer to `null`, which is indistinguishable from the model declining to answer
+unless something records why. Two rules keep them apart:
 
-Two mistakes compounded. An abort resolves the analyzer to `null`, which the engine reported as
-`no-output` ("asked, and nothing came back") when the truth was "never finished being asked". And the
-controller cached every result it produced, including that one — so every later visit was a cache hit,
-which short-circuits before the semantic stage and cannot retry. Reloading Gmail emptied the `Map`,
-which is exactly why reloading appeared to fix the model.
-
-The fix separates *a conclusion* from *a moment*:
-
-- `cancelled` is now its own `SemanticStatus`, set when the signal is aborted whether the adapter
-  reported the cancellation by resolving to nothing or by rejecting.
+- `cancelled` is its own `SemanticStatus`, set whenever the signal is aborted, whether the adapter
+  reported it by resolving to nothing or by rejecting.
 - `isSemanticSettled()` gates what may be cached: only `ready` (the model answered) and `off` (it was
   deliberately not asked). `cancelled`, `error`, `no-output` and `unavailable` are not kept.
 
-The second half generalises past the bug that prompted it. A one-off timeout no longer marks a message
-unassessable for the life of the tab, and messages read while Chrome was still downloading the model are
-re-assessed once it is there. The cost of not caching a non-answer is a re-run of the rule engine
-(single-digit milliseconds) and one more inference attempt on the next visit, which is the behaviour a
-user expects from something they can see was interrupted.
+The second rule matters because the cache short-circuits before the semantic stage runs, so a cached
+non-answer can never be retried and would stand for the life of the tab. With it, a one-off timeout does
+not mark a message permanently unassessable, and a message read while Chrome was still downloading the
+model is re-assessed once the model is there. The cost is a re-run of the rule engine (single-digit
+milliseconds) and one more inference attempt per visit.
 
 ---
 
@@ -217,31 +213,29 @@ viewSignature = `${routeThreadIdFromHash}|${domSignature}`
 **The staleness guard compares the DOM against itself, never the route against the DOM.** Gmail
 identifies the same thread in two unrelated id namespaces — the hash carries a conversation id
 (`FMfcgzQhWLMhlXGCZNdTpfpfWQXRPjNz`) while the subject element carries a thread perm id
-(`thread-f:1798…`). An early version tested those for equality; because they are never equal, it
-rejected *every* message and the extension silently analysed nothing on a real inbox while all
-analysis-layer tests stayed green. The guard now asks "has the rendered view moved on from what I last
-reported?", and only applies when the route has actually changed since the last emit — re-opening the
-same thread renders a byte-identical view and must still emit. `test/observer.test.ts` covers both
-directions, since every negative decision here is silent by design.
+(`thread-f:1798…`). They are never equal, so testing them for equality rejects *every* message and
+silently analyses nothing on a real inbox while every analysis-layer test stays green. The guard instead
+asks "has the rendered view moved on from what I last reported?", and applies only when the route has
+changed since the last emit, because re-opening the same thread renders a byte-identical view and must
+still emit. `test/observer.test.ts` covers both directions, since every negative decision here is silent
+by design.
 
 ### 3.1 Which message in a thread gets assessed
 
-A conversation contains several messages and only some are expanded. The first version took the last
-expanded one, on the reasoning that Gmail collapses everything except what you are reading. That is
-true right up until you reply: your own reply is then the newest message and the one Gmail leaves
-open, so the extension assessed the user's outgoing mail — scoring their own writing, while the
-inbound message a warning might actually matter for sat collapsed above it and could not be selected
-at all, because it is *earlier* in DOM order than the reply.
+A conversation contains several messages and only some are expanded. "The last expanded one" is the
+obvious choice, on the reasoning that Gmail collapses everything except what you are reading — and it
+holds right up until you reply. Your own reply is then the newest message and the one Gmail leaves open,
+so that rule assesses the user's outgoing mail, scoring their own writing, while the inbound message a
+warning might matter for sits collapsed *earlier* in DOM order and cannot be selected at all.
 
-So `currentMessage()` now picks the last expanded message **that the user did not write**, and
-reports nothing when every expanded message is their own. Expanding an older received message in the
-thread now also works, which it previously did not.
+`currentMessage()` therefore picks the last expanded message **that the user did not write**, and reports
+nothing when every expanded message is their own. Expanding an older received message selects that.
 
 The hard part is deciding what "the user wrote it" means, because the obvious test is a security hole.
 "The From address is my own address" is not enough: mail forged to appear as if it came from the
 reader's own account is a scam genre in its own right ("I have access to your account, pay me"), it
 arrives in the inbox, and Gmail renders it as being from *me* exactly as it renders a real sent
-message. Suppressing on the From address alone would have exempted that entire genre.
+message. Suppressing on the From address alone exempts that entire genre.
 
 The test used instead is **from the account _and_ addressed to somebody else**:
 
@@ -350,15 +344,15 @@ itself**. Two exclusions follow from that same sentence, not as special cases:
 - `llm` signals, by category — so the semantic layer can never produce a high-risk verdict alone.
 - `authentication.gmail_warning`, by id (`excludedSignalIds`) — Gmail's banner is an assertion by
   another system whose reasoning we cannot show, and Gmail renders it *conditionally on the folder being
-  viewed*. While it could set a floor, moving a message to Spam changed its score, because Gmail
-  annotates mail in Spam in ways it does not in the Inbox. The score has to be a property of the
-  message. It is still reported at its real severity and still contributes additively; it just cannot
-  set the verdict on its own.
+  viewed*: it annotates mail in Spam in ways it does not in the Inbox. Were it allowed to set a floor,
+  moving a message to Spam would change its score, and the score has to be a property of the message. It
+  is still reported at its real severity and still contributes additively; it just cannot set the verdict
+  on its own.
 
-The related extraction fix is in `readGmailWarning` (`src/gmail/dom-adapter.ts`), which separates a
-*verdict* ("Be careful with this message…") from a *placement notice* ("Why is this message in spam?…").
-The latter appears on every message in the spam folder, including mail the user filed there by hand, so
-reading it as a verdict let a manual "mark as spam" return as a security finding.
+`readGmailWarning` (`src/gmail/dom-adapter.ts`) enforces the same distinction at extraction time by
+separating a *verdict* ("Be careful with this message…") from a *placement notice* ("Why is this message
+in spam?…"). The latter appears on every message in the spam folder, including mail the user filed there
+by hand, so reading it as a verdict turns a manual "mark as spam" into a security finding.
 
 ### 4.2 False-positive resistance
 
@@ -380,17 +374,16 @@ heuristics about tone.
 #### Click tracking is not a mismatch
 
 The strongest link rule — displayed address disagrees with destination — misfires on an entire genre of
-legitimate mail. A Substack newsletter scored **50/100 "Suspicious"** in production: the platform
-rewrites every outbound link to `substack.com/redirect/…` while leaving the anchor text naming the
-destination site, so a link roundup produced several `high` mismatches, saturated the link category at
-25/25, and tripped the `high` severity floor at 50.
+legitimate mail. Newsletter platforms rewrite every outbound link through their own redirector while
+leaving the anchor text naming the destination site, so a link roundup produces several `high` mismatches,
+saturates the link category at 25/25 and trips the `high` severity floor: a Substack newsletter scores
+**50/100 "Suspicious"** on nothing but its click tracking.
 
-`wrappedByKnownTracker` already existed for this, but it can only recognise redirectors that appear in
-`KNOWN_TRACKING_REDIRECTORS` — and a list of platforms is stale the day it is written, exactly like the
-brand table in §4.2.1. So the fix is structural: `LinkAnalysis.onSenderDomain` is true when the href's
-entry host is on the **sender's own registrable domain**, which is how every newsletter platform is
-built (it sends from and redirects through one domain). `displayedUrlMismatch` and `suspiciousRedirects`
-both skip those links.
+`wrappedByKnownTracker` covers this only for redirectors listed in `KNOWN_TRACKING_REDIRECTORS`, and a
+list of platforms is stale the day it is written, exactly like the brand table in §4.2.1. The structural
+answer is `LinkAnalysis.onSenderDomain`, true when the href's entry host is on the **sender's own
+registrable domain**, which is how every newsletter platform is built — it sends from and redirects
+through one domain. `displayedUrlMismatch` and `suspiciousRedirects` both skip those links.
 
 What licenses the suppression is not "newsletters are usually fine" but that the rewrite transfers no
 trust. The sender already chose every link in the message, so routing one through its own domain gives
@@ -405,10 +398,10 @@ platform domain so the tracker list cannot be what makes the test pass.
 
 A curated `BRANDS` table (`src/shared/brands.ts`) gives the best *explanations* — "not a domain owned by
 Microsoft" is precise because the owned domains are known. But it must never be the only route to an
-identity finding, and originally it was: every detector in `rules/identity.ts` was gated on a brand
-claim, so a real message from `"Fidelity Life Offer" <DoNoT.rEpLy.…@mt50sys.com>` scored **24/100, low
-risk** — links saturated at 24/25 and `identity` contributed exactly nothing, because Fidelity is not in
-the table. No table ever contains every insurer, bank, utility and government agency.
+identity finding. Gate every detector in `rules/identity.ts` on a brand claim and a real message from
+`"Fidelity Life Offer" <DoNoT.rEpLy.…@mt50sys.com>` scores **24/100, low risk**: links saturate at 24/25
+and `identity` contributes exactly nothing, because Fidelity is not in the table. No table ever contains
+every insurer, bank, utility and government agency.
 
 Two brand-independent detectors close that gap:
 
@@ -427,15 +420,15 @@ marketing.
 
 Two subtleties that the tests pin down:
 
-- **Freemail is not brand-owned for this purpose.** `gmail.com` is a Google-owned domain, so the
-  "brand-owned domains are exempt" rule initially exempted every consumer mailbox — the most important
-  case. Freemail is now excluded from that exemption.
+- **Freemail is not brand-owned for this purpose.** `gmail.com` is a Google-owned domain, so a plain
+  "brand-owned domains are exempt" rule exempts every consumer mailbox — the most important case.
+  Freemail is excluded from that exemption.
 - **Escalation is limited to regulated bodies.** Only a financial/official marker (`bank`, `insurance`,
   `payments`) escalates to `high` on a freemail sender, since a sports club genuinely does send
   `"… Team"` mail from Gmail and a `high` there would trip the severity floor.
 
-The Fidelity example now scores **60 (suspicious)** from three categories — `identity` 21, `link` 24,
-`content` 15 — rather than from one saturated category.
+With those in place the Fidelity example scores **60 (suspicious)** from three categories — `identity` 21,
+`link` 24, `content` 15 — rather than from one saturated category.
 
 ### 4.2.2 Raw fields: evidence that normalisation destroys
 
@@ -443,7 +436,7 @@ Normalisation is what makes comparison possible. Case-folding an address is why 
 sender equals another; collapsing a subject's whitespace is why keyword matching works. Neither is
 optional.
 
-But both erase evidence, and in the Fidelity message they erased two real signals:
+But both erase evidence. In the Fidelity message they erase two real signals:
 
 | Observed in the message | After normalisation |
 | --- | --- |
@@ -485,11 +478,11 @@ Three structural guarantees, each unit-tested:
 
 ### 4.3.1 Calibrating an uncalibrated model
 
-The three guarantees above bound the damage a *hostile* model can do. They say nothing about a
-merely badly-calibrated one, and measurement against a real on-device model (Gemini Nano via the
-Prompt API) showed exactly that failure: accurate on genuine fraud, systematically over-suspicious
-on legitimate mail, rating an ordinary product announcement 95/100 at 98% confidence and justifying
-it with "Suspicious Sender Email" and "Link to Unknown Domain".
+The three guarantees above bound the damage a *hostile* model can do. They say nothing about a merely
+badly-calibrated one, and a real on-device model (Gemini Nano via the Prompt API) is exactly that:
+accurate on genuine fraud, systematically over-suspicious on legitimate mail. It rates an ordinary
+product announcement 95/100 at 98% confidence and justifies it with "Suspicious Sender Email" and "Link
+to Unknown Domain".
 
 Note what those two reasons have in common: both are *technical* claims, of the kind §4.3's division
 of labour explicitly assigns to deterministic code. The model was not doing semantic judgement badly,
@@ -546,16 +539,15 @@ header container: a badge in a worse position, never no badge.
 
 ### 5.1 Why the detail card is pinned to a corner
 
-The badge belongs beside the message header, because it is a property *of* that header. The
-explanation does not, and originally trying to make it one caused the obvious bug: the card was
-positioned from the badge's viewport rectangle, so scrolling the message carried the explanation off
-screen at precisely the moment the user scrolled down to look at the thing being explained. Keeping
-it in view needed `scroll` and `resize` listeners feeding a reposition routine, and it still competed
-with Gmail's own scroll containers for space.
+The badge belongs beside the message header, because it is a property *of* that header. The explanation
+does not. Anchoring the card to the badge's viewport rectangle means scrolling the message carries the
+explanation off screen at precisely the moment the reader scrolls down to look at the thing being
+explained; keeping it visible then needs `scroll` and `resize` listeners feeding a reposition routine, and
+it still competes with Gmail's own scroll containers for space.
 
-Pinning it to the bottom-right removes the coupling rather than compensating for it: no scroll
-listener, no resize handler, no reflow, and no interaction with Gmail's layout at all. Three
-consequences shaped the design:
+Pinning it to the bottom-right removes the coupling rather than compensating for it: no scroll listener,
+no resize handler, no reflow, and no interaction with Gmail's layout at all. Three consequences shaped the
+design:
 
 - **It must identify its own subject.** Detached from the header, a card in the corner cannot be
   assumed to describe the message on screen, so the head carries the subject and sending domain. Both
@@ -570,20 +562,20 @@ consequences shaped the design:
 
 ### 5.2 "Not yet" is not the same as "not available"
 
-The two-stage render has a consequence the first version got wrong. For the few seconds of on-device
-inference, the card showed *On-device AI analysis is unavailable in this browser* — a permanent
-statement about the browser — and then silently replaced it with a verdict. A tool that contradicts
-itself within five seconds teaches the user to disbelieve the message, which matters because that
-message is true for most browsers and is how they learn the score is deterministic-only.
+The two-stage render creates a reporting trap. During the few seconds of on-device inference there is no
+verdict yet, and the honest-looking thing to show — *On-device AI analysis is unavailable in this
+browser* — is a permanent statement about the browser that gets silently replaced by a verdict moments
+later. A tool that contradicts itself within five seconds teaches the reader to disbelieve the message,
+which matters because that message is true for most browsers and is how they learn the score is
+deterministic-only.
 
-Fixing the wording alone was not possible, because the UI could not tell the cases apart: it had only
-`semanticSource === 'none'`, which is the same value for a browser with no model, a model that declined
-to answer, an attempt that failed, and an inference still running. So the engine now reports
-`meta.semanticStatus` (`ready` · `unavailable` · `no-output` · `error` · `off`), the controller tracks
-`pending` for the in-flight window, and the card renders five distinct states from one `SemanticStatus`
-value. `PanelView` groups the render inputs into a single object for a related reason: the card is
-painted from several places, and a positional `(result, aiMode, email, pending)` signature invites a
-call site that updates the result and forgets the flag — reintroducing exactly this bug.
+Wording cannot fix it, because a single "no semantic result" value cannot distinguish a browser with no
+model, a model that declined to answer, an attempt that failed, and an inference still running. The engine
+therefore reports `meta.semanticStatus` (`ready` · `pending` · `unavailable` · `no-output` · `error` ·
+`cancelled` · `off`) and the card renders a distinct state for each. `PanelView` groups the render inputs
+into a single object for a related reason: the card is painted from several places, and a positional
+`(result, aiMode, email, pending)` signature invites a call site that updates the result and forgets the
+flag, which reintroduces exactly this problem.
 
 The pending state is deliberately understated: a small ring and one line of text, inside a `role="status"`
 region so the transition out of it is announced without interrupting a screen-reader user. It is a
@@ -663,13 +655,26 @@ Every string from an email is treated as attacker-controlled.
 
 ---
 
-## 9. Build order actually followed
+## 9. Shipping: CI, packaging, and the UI harness
 
-1. Architecture notes (this file) → 2. structure → 3. manifest → 4. Gmail adapter →
-5. rule engine → 6. scoring (aggregation unit-tested *before* detectors were wired in) →
-7. injected UI → 8. tests/fixtures → 9. local LLM adapter → 10. README.
+`npm run verify` (lint + typecheck + test) is the gate, and `.github/workflows/ci.yml` runs it on the
+`engines` floor (Node 20.11.0) as well as 22 and 24, because the floor is a promise and an untested
+promise is a guess.
 
-`npm run verify` (lint + typecheck + test) was run and kept green at each stage.
+CI then builds and uploads the extension, so every commit carries an installable package rather than
+requiring a reviewer to have a toolchain. Three checks run before the upload, each guarding a failure that
+is invisible until someone tries to load the result: every file named by the manifest exists, the manifest
+version agrees with `package.json`, and no sourcemap reference survived into the production bundle.
+`release.yml` does the same on a `v*` tag and additionally refuses to publish when the tag disagrees with
+`package.json`, since the manifest version is generated from that field.
+
+**The UI harness** (`npm run harness`) exists because of §1.1: the badge and card only have meaning inside
+a Gmail message, so there is nothing a dev server can preview. The harness closes that gap without
+pretending to be Gmail. It mounts the *real* `Badge` and `Panel` against the *real* engine output for a
+chosen `test/fixtures/` message, inside a deliberately minimal header mock, which makes every UI state —
+each classification band, each `SemanticStatus`, light and dark — reachable in one keystroke instead of by
+finding a suitable email. `scripts/screenshots.mjs` drives that same page to regenerate `docs/assets/`, so
+the images in the README are renders of the shipping components rather than mockups that drift from them.
 
 ---
 
@@ -688,6 +693,6 @@ Every string from an email is treated as attacker-controlled.
 - **English-centric content heuristics.** Rules 4.2's brand/lookalike logic is language-neutral;
   §"content" keyword patterns are English. Non-English social engineering will under-score on the
   `content` category. The semantic analyzer partially covers this when available.
-- **On-device AI availability is a moving target.** See README §"Local LLM behaviour" for the exact
-  Chrome/flag state tested. `isAvailable()` fails closed, and the "no local model" path is a
+- **On-device AI availability is a moving target.** See [LOCAL-AI.md](LOCAL-AI.md) for the exact
+  Chrome and flag state tested. `isAvailable()` fails closed, and the "no local model" path is a
   first-class tested path.
