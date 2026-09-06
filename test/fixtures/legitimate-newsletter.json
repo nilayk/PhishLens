@@ -1,0 +1,35 @@
+{
+  "name": "legitimate-newsletter",
+  "description": "False-positive resistance: marketing newsletter with many links, a tracking redirector, and urgency language ('ends tonight', 'last chance'). Must not be treated as a phish.",
+  "email": {
+    "senderName": "Kestrel Coffee Roasters",
+    "senderEmail": "hello@kestrelcoffee.co.uk",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "subject": "Last chance: 20% off single origins ends tonight",
+    "bodyText": "The autumn single origin sale ends at midnight tonight. Act now to get 20% off everything in the single origin range, including the new Rwandan Kanzu lot that landed last week.\n\nOur roaster's pick this month is the Kanzu — stone fruit, black tea, and a syrupy body that holds up beautifully in a flat white.\n\nAlso new this month: refillable tins, a decaf that doesn't taste like a compromise, and free UK delivery over £30.\n\nShop the sale · New arrivals · Subscriptions · Brewing guides · Gift cards\n\nYou are receiving this because you signed up at kestrelcoffee.co.uk. Unsubscribe or manage your email preferences at any time. View this email in your browser.\n\nKestrel Coffee Roasters, Unit 4 Bantham Yard, Bristol BS2 0QT",
+    "links": [
+      { "text": "Shop the sale", "href": "https://kestrelcoffee.co.uk/collections/single-origin?utm_campaign=autumn" },
+      { "text": "New arrivals", "href": "https://kestrelcoffee.co.uk/collections/new" },
+      { "text": "Rwandan Kanzu", "href": "https://kestrelcoffee.co.uk/products/rwanda-kanzu" },
+      { "text": "Subscriptions", "href": "https://kestrelcoffee.co.uk/pages/subscriptions" },
+      { "text": "Brewing guides", "href": "https://kestrelcoffee.co.uk/blogs/guides" },
+      { "text": "Gift cards", "href": "https://kestrelcoffee.co.uk/products/gift-card" },
+      { "text": "refillable tins", "href": "https://kestrelcoffee.co.uk/products/refill-tin" },
+      { "text": "decaf", "href": "https://kestrelcoffee.co.uk/products/swiss-water-decaf" },
+      { "text": "free UK delivery", "href": "https://kestrelcoffee.co.uk/pages/delivery" },
+      { "text": "Instagram", "href": "https://instagram.com/kestrelcoffee" },
+      { "text": "View this email in your browser", "href": "https://kestrelcoffee.co.uk/campaigns/autumn-sale-final" },
+      { "text": "Unsubscribe", "href": "https://kestrelcoffee.co.uk/unsubscribe?c=8f21ab" },
+      { "text": "manage your email preferences", "href": "https://kestrelcoffee.co.uk/preferences?c=8f21ab" },
+      { "text": "kestrelcoffee.co.uk", "href": "https://kestrelcoffee.co.uk/" }
+    ],
+    "attachments": [],
+    "auth": {
+      "spf": "pass",
+      "dkim": "pass",
+      "dmarc": "pass",
+      "signedBy": "kestrelcoffee.co.uk",
+      "via": "sendgrid.net"
+    }
+  }
+}

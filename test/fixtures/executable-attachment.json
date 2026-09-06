@@ -1,0 +1,16 @@
+{
+  "name": "executable-attachment",
+  "description": "Malware delivery: double-extension executable plus a right-to-left-override filename. Isolates filename-based attachment detection with no download of any kind.",
+  "email": {
+    "senderName": "DHL Express",
+    "senderEmail": "tracking@dhl-parcel-notify.xyz",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "subject": "DHL shipment 4829175530 - address could not be confirmed",
+    "bodyText": "Dear Customer,\n\nWe attempted delivery of your shipment but the delivery address could not be confirmed. The parcel is being held at our depot.\n\nPlease review the attached shipping documents and confirm the delivery address so we can re-attempt delivery. Shipments unclaimed after 5 working days are returned to sender.\n\nWaybill: 4829175530\n\nDHL Express Customer Service",
+    "links": [],
+    "attachments": [
+      { "filename": "DHL_Shipping_Documents.pdf.exe" },
+      { "filename": "waybill_\u202egnp.scr" }
+    ]
+  }
+}

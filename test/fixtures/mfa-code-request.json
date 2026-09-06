@@ -1,0 +1,13 @@
+{
+  "name": "mfa-code-request",
+  "description": "An attacker who already has the password asking for the second factor. Isolates the MFA-request pattern and its combination with an account-threat claim.",
+  "email": {
+    "senderName": "Northwind IT Security",
+    "senderEmail": "it-security@northwind-Iogistics.com",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "subject": "Unauthorised sign-in attempt blocked - confirm your code",
+    "bodyText": "Sam,\n\nWe detected an unauthorised sign-in attempt on your account from an unrecognised device in Lagos, Nigeria at 03:14 GMT.\n\nWe have temporarily restricted the account while we verify it is you. You will shortly receive a six digit verification code by SMS.\n\nPlease reply to this email with the verification code so we can confirm your identity and restore access. Do not share the code with anyone else.\n\nIf we do not hear from you within one hour the account will remain locked and you will need to attend the office in person to have it reset.\n\nNorthwind IT Security Team",
+    "links": [],
+    "attachments": []
+  }
+}

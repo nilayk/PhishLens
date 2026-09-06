@@ -1,0 +1,13 @@
+{
+  "name": "payroll-change",
+  "description": "Payroll diversion: employee impersonation from a lookalike-free external freemail account requesting direct-deposit change, steering away from the HR system.",
+  "email": {
+    "senderName": "Marta Kowalczyk",
+    "senderEmail": "marta.kowalczyk.hr@outlook.com",
+    "recipientEmail": "payroll@northwind-logistics.com",
+    "subject": "Change of bank details for my salary",
+    "bodyText": "Hi,\n\nI have switched banks and need to update my direct deposit details before this month's payroll run. My old account is being closed at the end of the week.\n\nPlease change my payroll deposit to the new account below:\n\nAccount name: M Kowalczyk\nSort code: 20-45-77\nAccount number: 81140293\n\nI tried the self-service HR portal but it keeps rejecting the change, so please just update it on your side. I'm travelling this week so I can't come by the office, email is best.\n\nCould you confirm once it's done so I know it's gone through before the cut-off?\n\nThanks,\nMarta",
+    "links": [],
+    "attachments": []
+  }
+}

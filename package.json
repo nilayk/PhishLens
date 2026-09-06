@@ -1,0 +1,34 @@
+{
+  "name": "phishlens",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Explainable phishing, malware and social-engineering risk analysis for Gmail, as a Chrome MV3 extension.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:dev": "node scripts/build.mjs --dev",
+    "dev": "node scripts/build.mjs --dev --watch",
+    "clean": "node scripts/build.mjs --clean-only",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "verify": "npm run lint && npm run typecheck && npm run test"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.24.2",
+    "eslint": "^9.17.0",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.2",
+    "vitest": "^2.1.8"
+  }
+}

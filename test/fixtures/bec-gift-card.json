@@ -1,0 +1,14 @@
+{
+  "name": "bec-gift-card",
+  "description": "Executive gift-card scam: CEO impersonation from a freemail account, availability probe, secrecy request, gift-card ask, no links at all.",
+  "email": {
+    "senderName": "Daniel Achebe (CEO)",
+    "senderEmail": "danielachebe.ceo@gmail.com",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "replyTo": "d.achebe.office@gmail.com",
+    "subject": "Quick favour",
+    "bodyText": "Are you available at the moment?\n\nI need you to handle something for me discreetly. I'm currently in a meeting with the board and cannot take calls, so email only please.\n\nWe need to send out client appreciation gifts today and I would like you to purchase 8 Amazon gift cards at 250 each. Once you have them, scratch off the back and send me photographs of the codes so I can forward them on before end of day.\n\nPlease keep this between us for now as I want to announce it at the all-hands on Friday. I will get finance to reimburse you as soon as I'm out.\n\nLet me know as soon as it's done.\n\nRegards,\nDaniel Achebe\nChief Executive Officer\nSent from my iPhone",
+    "links": [],
+    "attachments": []
+  }
+}

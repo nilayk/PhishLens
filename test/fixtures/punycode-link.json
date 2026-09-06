@@ -1,0 +1,18 @@
+{
+  "name": "punycode-link",
+  "description": "Homoglyph attack: xn--pypal-4ve.com renders as pаypal.com with a Cyrillic а. Isolates punycode + confusable detection on a link destination.",
+  "email": {
+    "senderName": "PayPal",
+    "senderEmail": "service@xn--pypal-4ve.com",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "subject": "Receipt for your payment to Gadget World",
+    "bodyText": "Hello,\n\nYou sent a payment of 249.99 GBP to Gadget World Ltd.\n\nIf you did not authorise this payment, review the transaction in your account.\n\nTransaction ID: 4J82HW01LM993\n\nThanks for using PayPal.",
+    "links": [
+      {
+        "text": "review the transaction",
+        "href": "https://www.xn--pypal-4ve.com/myaccount/transactions/4J82HW01LM993"
+      }
+    ],
+    "attachments": []
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "zip-attachment",
+  "description": "Password-protected archive delivered with an invoice pretext from an unrelated freemail account. Isolates the archive path, which must be a signal rather than a verdict.",
+  "email": {
+    "senderName": "Billing Department",
+    "senderEmail": "billing.dept.invoices@gmail.com",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "subject": "Outstanding invoice INV-40928 - payment overdue",
+    "bodyText": "Good afternoon,\n\nPlease find attached invoice INV-40928 which is now past due. The outstanding amount is 4,280.00 and payment was expected on the 14th.\n\nThe archive password is Invoice2024 — we protect attachments as standard.\n\nKindly settle this as soon as possible to avoid the account being passed to collections.\n\nRegards,\nBilling Department",
+    "links": [],
+    "attachments": [
+      { "filename": "INV-40928.zip" }
+    ]
+  }
+}

@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PhishLens settings</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #1f2328;
+        --muted: #57606a;
+        --line: #d8dee4;
+        --accent: #0b5fd0;
+        --card: #f6f8fa;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #14171a;
+          --fg: #e6edf3;
+          --muted: #9aa4af;
+          --line: #2c333a;
+          --accent: #5ea1ff;
+          --card: #1b1f24;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 40px 24px 72px;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          14px/1.55 system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+      }
+      main {
+        max-width: 680px;
+        margin: 0 auto;
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 22px;
+        letter-spacing: -0.01em;
+      }
+      .sub {
+        margin: 0 0 32px;
+        color: var(--muted);
+      }
+      h2 {
+        margin: 32px 0 4px;
+        font-size: 15px;
+      }
+      .hint {
+        margin: 0 0 12px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+      fieldset {
+        margin: 0;
+        padding: 0;
+        border: 0;
+      }
+      legend {
+        padding: 0;
+      }
+      .option {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        padding: 12px 14px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin-bottom: 8px;
+        background: var(--card);
+        cursor: pointer;
+      }
+      .option:focus-within {
+        border-color: var(--accent);
+        outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+      }
+      .option input {
+        margin: 3px 0 0;
+        accent-color: var(--accent);
+      }
+      .option-title {
+        font-weight: 600;
+      }
+      .option-desc {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      label.inline {
+        display: flex;
+        gap: 10px;
+        align-items: flex-start;
+        margin-bottom: 10px;
+        cursor: pointer;
+      }
+      input[type="url"] {
+        width: 100%;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--fg);
+        font: inherit;
+      }
+      input[type="url"]:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+      .field-error {
+        min-height: 18px;
+        margin: 6px 0 0;
+        font-size: 13px;
+        color: #b3261e;
+      }
+      @media (prefers-color-scheme: dark) {
+        .field-error {
+          color: #ff8a80;
+        }
+      }
+      .status {
+        position: fixed;
+        left: 50%;
+        bottom: 20px;
+        transform: translateX(-50%);
+        padding: 8px 14px;
+        border-radius: 999px;
+        background: var(--fg);
+        color: var(--bg);
+        font-size: 13px;
+        opacity: 0;
+        transition: opacity 160ms ease;
+        pointer-events: none;
+      }
+      .status[data-visible="true"] {
+        opacity: 1;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      footer {
+        margin-top: 36px;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>PhishLens</h1>
+      <p class="sub">
+        Explainable phishing and social-engineering analysis for Gmail. Advisory only — PhishLens never
+        blocks links, downloads, or replies.
+      </p>
+
+      <fieldset>
+        <legend><h2>AI analysis</h2></legend>
+        <p class="hint">
+          Technical checks — sender domains, links, attachments, wording patterns — always run on this
+          device and need no AI. This setting only controls the optional semantic layer.
+        </p>
+
+        <label class="option">
+          <input type="radio" name="aiMode" value="local" />
+          <span>
+            <span class="option-title">On-device only (recommended)</span><br />
+            <span class="option-desc">
+              Uses Chrome's built-in model if this browser has one. Message content never leaves the
+              machine. If no on-device model is available, analysis continues without it.
+            </span>
+          </span>
+        </label>
+
+        <label class="option">
+          <input type="radio" name="aiMode" value="off" />
+          <span>
+            <span class="option-title">Off</span><br />
+            <span class="option-desc">
+              Technical checks only. No model runs, and the AI section of the panel says so.
+            </span>
+          </span>
+        </label>
+
+        <label class="option">
+          <input type="radio" name="aiMode" value="cloud" />
+          <span>
+            <span class="option-title">Cloud-assisted</span><br />
+            <span class="option-desc">
+              Sends a redacted summary — subject, a body excerpt, and domains, with no recipient
+              address and no attachments — to a backend you configure below. Not enabled by default,
+              and inert until a URL is set.
+            </span>
+          </span>
+        </label>
+
+        <div id="backendField" hidden>
+          <label for="backendBaseUrl" class="option-title">Backend base URL</label>
+          <p class="hint">
+            Must be <code>https://</code>. PhishLens only ever talks to this backend, never directly to
+            a model vendor, and carries no API key.
+          </p>
+          <input
+            type="url"
+            id="backendBaseUrl"
+            placeholder="https://phishlens.example.com"
+            spellcheck="false"
+            autocomplete="off"
+            aria-describedby="backendError"
+          />
+          <p class="field-error" id="backendError" role="alert"></p>
+        </div>
+      </fieldset>
+
+      <h2>Display</h2>
+      <label class="inline">
+        <input type="checkbox" id="showBadgeWhenLow" />
+        <span>
+          <span class="option-title">Show the badge on low-risk messages</span><br />
+          <span class="option-desc">
+            Turn off to show the badge only when something was found. Analysis still runs either way.
+          </span>
+        </span>
+      </label>
+      <label class="inline">
+        <input type="checkbox" id="highlightEnabled" />
+        <span>
+          <span class="option-title">Highlight the matching item in the message</span><br />
+          <span class="option-desc">
+            Hovering a finding outlines the link or sentence it refers to. Only adds a CSS class to an
+            existing element; Gmail's own markup and handlers are left alone.
+          </span>
+        </span>
+      </label>
+
+      <h2>Permissions</h2>
+      <p class="hint">Every permission in the manifest, and why it is there.</p>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Permission</th>
+            <th scope="col">Why</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>host_permissions: https://mail.google.com/*</code></td>
+            <td>
+              Read the open message from the page in order to analyse it. This is the only site
+              PhishLens can run on.
+            </td>
+          </tr>
+          <tr>
+            <td><code>storage</code></td>
+            <td>Persist the settings on this page. No message content is ever stored.</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="hint">
+        Not requested: <code>activeTab</code>, <code>&lt;all_urls&gt;</code>, <code>scripting</code>,
+        <code>webRequest</code>, <code>tabs</code>, or <code>downloads</code>.
+      </p>
+
+      <h2>Privacy</h2>
+      <p class="hint">
+        Message content is read into memory, analysed, and discarded. Bodies are never written to
+        storage or logged in a release build. Results are cached in the tab only for as long as the tab
+        is open. With AI off or on-device, nothing derived from a message leaves the browser.
+      </p>
+
+      <footer>
+        <span id="version"></span>
+      </footer>
+    </main>
+
+    <div class="status" id="status" role="status" data-visible="false"></div>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

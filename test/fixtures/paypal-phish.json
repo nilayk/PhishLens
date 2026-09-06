@@ -1,0 +1,28 @@
+{
+  "name": "paypal-phish",
+  "description": "Textbook PayPal credential phish: display-name impersonation, lookalike domain, account threat, urgency, generic salutation, anchor/href mismatch.",
+  "email": {
+    "senderName": "PayPal Service",
+    "senderEmail": "service@paypal-secure-billing.com",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "replyTo": "no-reply@mail-delivery-alerts.info",
+    "subject": "Your PayPal account has been limited - action required within 24 hours",
+    "bodyText": "Dear Customer,\n\nWe have detected unusual activity on your PayPal account. As a precaution your account access has been limited until you confirm your identity.\n\nWhat this means: you cannot send or receive money, and any pending transactions are on hold.\n\nTo restore full access you must verify your account information immediately. If you do not confirm your details within 24 hours your account will be permanently suspended and any remaining balance will be held for review.\n\nConfirm your account now: https://www.paypal.com/signin\n\nFailure to respond will result in permanent closure. This is your final notice.\n\nSincerely,\nThe PayPal Security Team\n\nPlease do not reply to this message. Copyright 1999-2024 PayPal. All rights reserved.",
+    "links": [
+      {
+        "text": "https://www.paypal.com/signin",
+        "href": "https://paypal-secure-billing.com/webapps/login/verify?token=8f2a91"
+      },
+      {
+        "text": "Confirm your account now",
+        "href": "https://paypal-secure-billing.com/webapps/login/verify?token=8f2a91"
+      }
+    ],
+    "attachments": [],
+    "auth": {
+      "spf": "fail",
+      "dkim": "fail",
+      "unauthenticatedIndicator": true
+    }
+  }
+}
