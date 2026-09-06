@@ -142,9 +142,33 @@ npm version patch      # writes package.json and creates the tag
 git push --follow-tags
 ```
 
-`.github/workflows/release.yml` verifies, builds, zips `dist/`, and publishes a GitHub Release with install
-instructions. It refuses to publish when the tag disagrees with `package.json`, because the manifest version
-is generated from that field and a release whose contents contradict its label is worse than no release.
+`.github/workflows/release.yml` verifies, builds, runs `check:dist`, zips `dist/`, and publishes a GitHub
+Release with install instructions. It refuses to publish when the tag disagrees with `package.json`, because
+the manifest version is generated from that field and a release whose contents contradict its label is worse
+than no release.
+
+A `v*` tag cannot be deleted or moved once pushed (see below), so a mistagged release is corrected by
+releasing the next patch version, never by repointing the tag. Someone may already have downloaded the asset,
+and a tag that no longer describes what they have is a worse outcome than a skipped version number.
+
+## Branch and tag protection
+
+Configured as repository rulesets, which live on GitHub rather than in this repository — hence recorded here.
+Both apply to every account including the owner, since a rule that the person most likely to be typing at
+2am can bypass is documentation, not protection.
+
+| Target                | Rule                            | Reason                                                                              |
+| --------------------- | ------------------------------- | ----------------------------------------------------------------------------------- |
+| `main`                | No force-push, no deletion      | History is the audit trail for a security tool; losing it silently is unrecoverable. |
+| `refs/tags/v*`        | No deletion, no moving          | A release asset is public and permanent, so its tag has to be too.                   |
+
+Status checks are deliberately **not** required. A commit cannot have passing checks before it is pushed, so
+requiring them would block direct pushes to `main` and force every change through a pull request — friction
+that buys little on a single-maintainer repository, given `npm run verify` runs before every commit anyway.
+
+If that changes, do not require the matrix jobs by name: they are called `Verify (Node 22.13.0)` and
+`Verify (Node 24)`, so the floor is baked into the string, and the ruleset would silently demand a check that
+no longer runs the next time the floor moves. Add an aggregate job with a stable name and require that.
 
 ## Conventions
 
