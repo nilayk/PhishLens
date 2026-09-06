@@ -20,6 +20,13 @@ updates:
       - dependency-name: typescript
         update-types: ['version-update:semver-major']
 
+      # @types/node is pinned to the major of the oldest Node the project supports, not the newest one it
+      # runs on. Typing ahead of the floor is worse than useless: `tsc` starts accepting APIs that are
+      # absent on the runtime `engines` promises, so the mistake surfaces for a contributor on the floor
+      # rather than in CI. Move this in step with the floor in package.json.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+
   # Without this, action versions silently rot; they were three majors behind within months.
   - package-ecosystem: github-actions
     directory: /
