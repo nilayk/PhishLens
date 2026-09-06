@@ -128,12 +128,13 @@ plausible.
 
 ## Confidence in the numbers
 
-610 tests run the real pipeline in plain Node — no Chrome, no Gmail, no network. The corpus in
-`test/fixtures/` holds 16 messages: a plain legitimate message, a legitimate password reset, a newsletter
-with many links, a newsletter whose links are all rewritten through its platform's click tracker, an
-invoice, PayPal phishing, a Microsoft lookalike domain, a brand spoof from an unlisted lead-generation
-sender, an anchor-URL mismatch, a punycode link, an IP-address URL, a ZIP attachment, an executable
-attachment, a gift-card scam, a fake payroll change, and an MFA-code request.
+674 tests run the real pipeline in plain Node — no Chrome, no Gmail, no network. The corpus in
+`test/fixtures/` holds 19 messages: a plain legitimate message, a legitimate password reset, a legitimate
+reply into an existing thread, a newsletter with many links, a newsletter whose links are all rewritten
+through its platform's click tracker, an invoice, PayPal phishing, a Microsoft lookalike domain, a brand
+spoof from an unlisted lead-generation sender, an anchor-URL mismatch, a punycode link, an IP-address URL,
+a ZIP attachment, an executable attachment, a gift-card scam, a fake payroll change, an MFA-code request,
+and two reply-chain hijacks — one by a lookalike domain, one reusing a participant's name.
 
 Fixtures store what a human would write down — anchor text, href, filename — and the loader derives
 `normalizedDomain` and `extension` using the same helpers the Gmail adapter uses. If fixtures hard-coded
