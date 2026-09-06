@@ -113,6 +113,14 @@ The codebase holds a high standard here, and matching it is part of the task.
   what they may not change.
 - Keep the docs true. `README.md` is for end users and should stay non-technical; technical detail belongs
   in `docs/`. If behaviour changes, update the document that describes it in the same commit.
+- **Never name a real organisation seen in someone's own mailbox.** Testing against live Gmail produces the
+  best bug reports this project gets, and the detail that makes one concrete — which bank, which supplier,
+  which brand the model misjudged — is private correspondence, published permanently the moment it reaches
+  a commit message, a comment, or a fixture. Record the shape instead: "a genuine bank notification",
+  "a supplier the brand table does not contain". Nothing of value is lost, because the shape is what the
+  next reader needs. Invented organisations follow the `northwind-*` house names already in
+  `test/fixtures/`, and the curated `src/shared/brands.ts` entries are the one exception — those are public
+  brands chosen for being widely phished, not messages anyone received.
 
 ## Git
 
