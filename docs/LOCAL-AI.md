@@ -228,8 +228,10 @@ rather than on the verdict.
 
 ## The cloud design, which is not built
 
-Designed deliberately and left inert. The seam already exists — `CloudAnalyzer` implements the same
-interface — so enabling it changes no analysis, scoring, or UI code.
+Designed deliberately and left inert, and **not offered in the settings page** — the option appears only
+for someone whose stored setting is already `cloud`, because a mode that returns no assessment on every
+message reads as a broken AI section rather than an unfinished feature. The seam still exists —
+`CloudAnalyzer` implements the same interface — so enabling it changes no analysis, scoring, or UI code.
 
 ```text
 extension (content script)

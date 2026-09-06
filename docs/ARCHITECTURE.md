@@ -649,9 +649,16 @@ the request rather than ignoring the field. A rejection costs a round trip, not 
 ## 6.1 Cloud analysis: designed, not shipped
 
 `src/analysis/llm/cloud.ts` implements `SemanticAnalyzer` against
-`POST {backendBaseUrl}/api/analyze`. It is **inert in the MVP**: `isAvailable()` returns `false`
+`POST {backendBaseUrl}/api/analyze`. It is **inert**: `isAvailable()` returns `false`
 unless the user has both selected `aiMode: 'cloud'` and configured a `backendBaseUrl`, and there is
 no default backend URL.
+
+**The options page no longer offers it,** and shows the radio only when it is already the stored choice.
+A mode that cannot return an assessment is worse than a missing one: selecting it produces "the analysis
+service did not return a usable assessment" on every message, which reads as a broken AI section rather
+than as an unfinished feature. Since §6 shipped, a reader wanting a model of their own has a mode that
+works, which removes the last reason to leave this one selectable. The markup and the adapter stay, so
+re-offering it is a one-line change.
 
 Non-negotiables baked into the design:
 
@@ -659,12 +666,18 @@ Non-negotiables baked into the design:
   that sends an `Authorization` header to a third-party model host. If cloud analysis is turned on,
   the extension talks only to *our* backend, and *that* backend holds the provider credential.
 - All egress goes through the **service worker**, never the content script. One choke point to audit
-  and to add a kill switch to. Reaching a backend will require adding its origin to
-  `host_permissions` at that time — a visible, reviewable manifest diff, not something the MVP
-  pre-authorises.
+  and to add a kill switch to.
 - The content script sends a **minimised, redacted** payload built by
   `src/analysis/llm/redact.ts` (truncated body, email addresses reduced to domains, no attachment
   bytes), not the raw `EmailMessage`.
+
+One consequence of §6 is worth recording, because it changed this section's assumptions without touching
+its code. Reaching a backend used to require adding its origin to `host_permissions` — a reviewable
+manifest diff. `optional_host_permissions` now covers `https://*/*`, so a backend origin could be granted
+at runtime instead, and nothing requests it: the options page asks only for the model-server origin. A
+configured backend would therefore be subject to CORS, and since `content-type: application/json` is not
+CORS-safelisted, would have to answer a preflight. Building the backend means deciding between a
+per-origin grant like §6's and CORS headers on the service.
 
 ---
 

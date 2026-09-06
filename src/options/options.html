@@ -27,6 +27,15 @@
       * {
         box-sizing: border-box;
       }
+      /*
+        The UA stylesheet's `[hidden] { display: none }` loses to any author `display` rule, so `.option`
+        below silently defeats the `hidden` attribute on an option row. Every `hidden` in this page is set
+        from `options/index.ts`, and one that does not hide is a settings page showing a mode that is not
+        supposed to be there.
+      */
+      [hidden] {
+        display: none !important;
+      }
       body {
         margin: 0;
         padding: 40px 24px 72px;
@@ -304,14 +313,20 @@
           </div>
         </div>
 
-        <label class="option">
+        <!--
+          Hidden unless it is already the stored choice: the cloud path is designed and inert
+          (docs/ARCHITECTURE.md §6.1), so offering it invites someone to select it and conclude the AI
+          section is broken. Kept in the markup rather than deleted, because the adapter it configures is
+          real and this becomes a one-line change when a backend exists.
+        -->
+        <label class="option" id="cloudOption" hidden>
           <input type="radio" name="aiMode" value="cloud" />
           <span>
-            <span class="option-title">Cloud-assisted</span><br />
+            <span class="option-title">Cloud-assisted (not built)</span><br />
             <span class="option-desc">
-              Sends a redacted summary — subject, a body excerpt, and domains, with no recipient
-              address and no attachments — to a backend you configure below. Not enabled by default,
-              and inert until a URL is set.
+              Would send a redacted summary — subject, a body excerpt, and domains, with no recipient
+              address and no attachments — to a backend you run. No such backend exists yet, so this
+              mode produces no assessment. Switch to on-device or your own model server.
             </span>
           </span>
         </label>

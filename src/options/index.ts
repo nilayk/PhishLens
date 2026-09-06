@@ -56,6 +56,7 @@ function originPattern(baseUrl: string): string | null {
 
 class OptionsPage {
   readonly #modeInputs = [...document.querySelectorAll<HTMLInputElement>('input[name="aiMode"]')];
+  readonly #cloudOption = requireElement('cloudOption', HTMLLabelElement);
   readonly #backendField = requireElement('backendField', HTMLDivElement);
   readonly #backendInput = requireElement('backendBaseUrl', HTMLInputElement);
   readonly #backendError = requireElement('backendError', HTMLParagraphElement);
@@ -132,6 +133,13 @@ class OptionsPage {
   #render(settings: Settings): void {
     this.#current = settings;
     for (const input of this.#modeInputs) input.checked = input.value === settings.aiMode;
+    /*
+     * The cloud option is shown only to someone who already has it selected. Hiding it outright would
+     * leave such a reader looking at a page where no mode is checked and no explanation of why, which is
+     * worse than the mode being visible; hiding it from everyone else stops a mode that cannot answer
+     * from being chosen and blamed on the AI section.
+     */
+    this.#cloudOption.hidden = settings.aiMode !== 'cloud';
     this.#backendField.hidden = settings.aiMode !== 'cloud';
     this.#backendInput.value = settings.backendBaseUrl;
     this.#serverField.hidden = settings.aiMode !== 'server';

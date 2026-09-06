@@ -53,8 +53,9 @@ require an explicit choice *and* an address, neither of which has a default valu
   reaches a process on your own machine and no network. Point it at an `https://` address elsewhere and it
   crosses a network to that address; the options page says so where you type it. See
   [LOCAL-AI.md](LOCAL-AI.md#your-own-model-server).
-- *Cloud-assisted* is designed and inert, with no default backend. What such a payload would contain, and
-  what it would strip, is in [LOCAL-AI.md](LOCAL-AI.md#the-cloud-design-which-is-not-built).
+- *Cloud-assisted* is designed and inert, with no default backend, and the options page no longer offers
+  it — the radio appears only for someone who already had it selected. What such a payload would contain,
+  and what it would strip, is in [LOCAL-AI.md](LOCAL-AI.md#the-cloud-design-which-is-not-built).
 
 Nothing else ever leaves, in any configuration.
 
