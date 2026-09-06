@@ -87,10 +87,17 @@ export class GmailDomAdapter implements MailAdapter {
       'currentMessage',
       () => {
         const root = this.observationRoot() ?? document.body;
-        // Every row in the thread, collapsed rows included, so the conversation history is available
-        // even though only the expanded ones can be assessed.
-        const rows = queryAllUnion(root, SELECTORS.messageContainer);
-        const candidates = rows.filter((element) => isExpanded(element));
+        const candidates = queryAllUnion(root, SELECTORS.messageContainer).filter((element) =>
+          isExpanded(element),
+        );
+
+        // One entry per message, in document order — `queryAll` takes the first candidate selector
+        // that matches anything, where `queryAllUnion` takes them all. The union is right for finding
+        // the message to assess, which only needs the set, and wrong here: it returns each message once
+        // per selector that matched it, so a single message arrives as several nested wrappers, ordered
+        // by selector rather than by position on screen. Neither survives being asked "what came
+        // before this".
+        const rows = queryAll(root, SELECTORS.messageContainer);
 
         const index = selectReadableMessage(
           candidates.map((candidate) => readIdentity(candidate)),
@@ -253,14 +260,20 @@ export function accountAddressFromTitle(title: string): string | undefined {
  * where Gmail puts the reader's own later reply, or a message opened out of order — was not.
  */
 function readPriorSenders(rows: readonly Element[], current: Element): ThreadParticipant[] {
-  const boundary = rows.indexOf(current);
-  const preceding = boundary === -1 ? rows : rows.slice(0, boundary);
+  // Located by containment rather than identity: `rows` and the assessed element are found by
+  // different selectors, so the row holding this message is often an ancestor of it rather than it.
+  const boundary = rows.findIndex((row) => row === current || row.contains(current));
+
+  // An unlocatable boundary yields no history, rather than treating every row as preceding. Rows below
+  // the assessed message would then be compared against it, and a wrong history can invent a finding —
+  // which costs more than the missed one that silence costs.
+  const preceding = boundary === -1 ? [] : rows.slice(0, boundary);
 
   const senders: ThreadParticipant[] = [];
   for (const row of preceding.slice(-MAX_THREAD_ROWS)) {
-    // A row nested inside the assessed message is not a sibling message: Gmail nests quoted content,
-    // and quoted content is written by whoever sent the message.
-    if (current.contains(row) || row.contains(current)) continue;
+    // Gmail nests quoted content, which is written by whoever sent the message, so a row inside the
+    // assessed one is not a sibling message.
+    if (current.contains(row)) continue;
     const participant = readParticipant(row);
     if (participant !== null) senders.push(participant);
   }
@@ -268,7 +281,12 @@ function readPriorSenders(rows: readonly Element[], current: Element): ThreadPar
   // The one extraction failure with no visible symptom. A missing badge or an absent link finding is
   // noticeable; a thread history that silently came back empty looks exactly like an ordinary thread,
   // and the rules that need it simply never fire. Worth a line in a dev build.
-  logger.debug('thread history', { rows: rows.length, before: preceding.length, found: senders.length });
+  logger.debug('thread history', {
+    rows: rows.length,
+    boundary,
+    before: preceding.length,
+    found: senders.length,
+  });
 
   return senders;
 }
@@ -283,10 +301,10 @@ function readPriorSenders(rows: readonly Element[], current: Element): ThreadPar
  */
 function readParticipant(row: Element): ThreadParticipant | null {
   const bodies = queryAllUnion(row, SELECTORS.body);
+  const outsideBody = (node: Element): boolean =>
+    !bodies.some((body) => body === node || body.contains(node));
 
-  for (const node of queryAllUnion(row, SELECTORS.senderSpan)) {
-    if (bodies.some((body) => body === node || body.contains(node))) continue;
-
+  for (const node of queryAllUnion(row, SELECTORS.senderSpan).filter(outsideBody)) {
     const email = node.getAttribute('email')?.trim().toLowerCase() ?? '';
     const name = node.getAttribute('name')?.trim() ?? collapseWhitespace(node.textContent);
     if (email === '' && name === '') continue;
@@ -295,6 +313,19 @@ function readParticipant(row: Element): ThreadParticipant | null {
       email: truncate(email, 320),
       // Gmail puts the address in the name slot when there is no display name; that is not a name.
       name: name === email ? '' : truncate(name, 300),
+    };
+  }
+
+  // Same fallback `readIdentity` uses, for rows that render the sender as `Name <addr>` text without
+  // carrying the attribute. A row that yields nothing costs real history: the participant it names stops
+  // being an established party, so a reply imitating them has nothing to be compared against.
+  for (const node of queryAllUnion(row, SELECTORS.senderTextual).filter(outsideBody)) {
+    const parsed = parseMailbox(collapseWhitespace(node.textContent));
+    if (parsed.email === undefined && parsed.name === undefined) continue;
+
+    return {
+      email: truncate(parsed.email ?? '', 320),
+      name: truncate(parsed.name ?? '', 300),
     };
   }
 
