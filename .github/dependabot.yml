@@ -1,0 +1,23 @@
+# Everything here is build tooling: package.json has no runtime dependencies, so nothing Dependabot
+# updates ends up inside the shipped extension. Updates are grouped to keep the noise down, since a
+# single advisory in esbuild otherwise arrives as several overlapping pull requests.
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        patterns: ['*']
+
+  # Without this, action versions silently rot; they were three majors behind within months.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']

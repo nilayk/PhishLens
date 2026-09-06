@@ -1,0 +1,83 @@
+# Publishes a release when a v* tag is pushed, with the packaged extension attached.
+#
+#   npm version patch    # or minor / major — writes package.json and creates the tag
+#   git push --follow-tags
+#
+# The tag is required to agree with package.json, because the manifest version is generated from it and
+# a release whose asset reports a different version than its tag is worse than no release.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check the tag matches package.json
+        id: meta
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          if [ "${GITHUB_REF_NAME#v}" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Verify
+        run: npm run verify
+
+      - name: Build
+        run: npm run build
+
+      # Zipped from inside dist/ so manifest.json sits at the archive root, which is what both "Load
+      # unpacked" and the Web Store dashboard expect.
+      - name: Package
+        run: |
+          set -euo pipefail
+          cd dist
+          zip -qr "../phishlens-${{ steps.meta.outputs.version }}.zip" .
+          cd ..
+          unzip -l "phishlens-${{ steps.meta.outputs.version }}.zip"
+
+      - name: Write release notes
+        run: |
+          cat > notes.md <<'NOTES'
+          ### Install
+
+          PhishLens is not on the Chrome Web Store. To install this build:
+
+          1. Download `phishlens-${{ steps.meta.outputs.version }}.zip` below and unzip it.
+          2. Open `chrome://extensions` and turn on **Developer mode**.
+          3. Choose **Load unpacked** and select the unzipped folder.
+          4. Open a message in Gmail. The risk score appears beside the sender's address.
+
+          Analysis runs entirely in your browser and no API key is required. On-device AI is used only if
+          Chrome exposes a local model; without it, the deterministic checks still produce a full score.
+
+          PhishLens is advisory. It does not block links, downloads or replies.
+          NOTES
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "phishlens-${{ steps.meta.outputs.version }}.zip" \
+            --title "PhishLens $GITHUB_REF_NAME" \
+            --notes-file notes.md
