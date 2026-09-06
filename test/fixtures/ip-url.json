@@ -1,0 +1,18 @@
+{
+  "name": "ip-url",
+  "description": "Bare IP destination over plain HTTP with a sign-in path. Isolates IP-URL and insecure-login detection.",
+  "email": {
+    "senderName": "IT Helpdesk",
+    "senderEmail": "helpdesk@mail-support-desk.top",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "subject": "Mailbox storage full - re-authenticate to continue receiving mail",
+    "bodyText": "Your mailbox has reached 98% of its storage quota.\n\nIncoming messages will be rejected once the quota is exceeded. Re-authenticate below to release the additional 5 GB allocated to your account.\n\nRe-authenticate mailbox\n\nIT Helpdesk",
+    "links": [
+      {
+        "text": "Re-authenticate mailbox",
+        "href": "http://185.234.219.14/owa/auth/logon.aspx?replaceCurrent=1"
+      }
+    ],
+    "attachments": []
+  }
+}

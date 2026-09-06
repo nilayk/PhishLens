@@ -1,0 +1,28 @@
+{
+  "name": "microsoft-phish",
+  "description": "Microsoft lookalike: sender domain rnicrosoft-online.com (rn reads as m), misleading link composition microsoft.com.<attacker>, credential ask on unrelated domain.",
+  "email": {
+    "senderName": "Microsoft 365 Message Center",
+    "senderEmail": "no-reply@rnicrosoft-online.com",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "subject": "Action required: your Microsoft 365 password expires today",
+    "bodyText": "Hello,\n\nYour Microsoft 365 password for sam.okafor@northwind-logistics.com is set to expire today at 5:00 PM. To avoid being locked out of Outlook, Teams and SharePoint, you must sign in and update your password now.\n\nKeep current password\n\nIf you do not update your password before it expires, your mailbox will be temporarily disabled and you will need to contact your administrator to restore access.\n\nThis is an automated message from the Microsoft 365 Message Center. Please do not reply.\n\nMicrosoft Corporation, One Microsoft Way, Redmond, WA 98052",
+    "links": [
+      {
+        "text": "Keep current password",
+        "href": "https://login.microsoftonline.com.session-verify-portal.net/auth/signin?u=sam.okafor%40northwind-logistics.com"
+      },
+      {
+        "text": "Microsoft privacy statement",
+        "href": "https://login.microsoftonline.com.session-verify-portal.net/privacy"
+      }
+    ],
+    "attachments": [],
+    "auth": {
+      "spf": "pass",
+      "dkim": "none",
+      "signedBy": "rnicrosoft-online.com",
+      "mailedBy": "rnicrosoft-online.com"
+    }
+  }
+}

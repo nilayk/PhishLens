@@ -1,0 +1,27 @@
+{
+  "name": "legitimate",
+  "description": "Ordinary internal message from a colleague. Nothing should fire.",
+  "email": {
+    "senderName": "Priya Raghunathan",
+    "senderEmail": "priya.raghunathan@northwind-logistics.com",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "subject": "Q3 warehouse throughput numbers",
+    "bodyText": "Hi Sam,\n\nI've pulled together the throughput figures for the Rotterdam and Felixstowe sites for Q3. Rotterdam is up 11% quarter on quarter, Felixstowe is flat, and the variance looks like it's mostly the two weeks of crane maintenance in August.\n\nI've put the working in the shared folder under Operations > Q3 Review. Happy to walk through it on Thursday if that's easier — I'm free after 14:00.\n\nOne thing worth flagging: the Felixstowe numbers exclude the reefer volumes because they're still being tracked in the old system. Marta is migrating those next month, so Q4 should be a like-for-like comparison.\n\nThanks,\nPriya\n\nPriya Raghunathan\nOperations Analyst, Northwind Logistics\n+44 20 7946 0812",
+    "links": [
+      {
+        "text": "Operations > Q3 Review",
+        "href": "https://northwind-logistics.com/shared/operations/q3-review"
+      }
+    ],
+    "attachments": [
+      { "filename": "Q3-throughput-rotterdam-felixstowe.xlsx" }
+    ],
+    "auth": {
+      "spf": "pass",
+      "dkim": "pass",
+      "dmarc": "pass",
+      "signedBy": "northwind-logistics.com",
+      "mailedBy": "northwind-logistics.com"
+    }
+  }
+}

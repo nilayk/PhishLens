@@ -1,0 +1,31 @@
+{
+  "name": "brand-spoof-leadgen",
+  "description": "Modelled on a real message that the engine originally scored 24/100 (low risk). Sender name asserts a financial brand ('Fidelity Life Offer') that is not in the brand table, from an unrelated random domain, with a repeated-fragment local part, an evasion-formatted subject, and every link plain HTTP to the same unknown host. Nothing here is brand-list-dependent, which is the point: this is the case that motivated identity.unsupported_org_claim. Also carries the two pre-normalisation signals: randomised address case and a padded subject, both of which the adapter's normalisation would otherwise erase. Recipient name redacted; body paraphrased, sender/subject/link shape verbatim.",
+  "email": {
+    "senderName": "Fidelity Life Offer",
+    "senderEmail": "DoNoT.rEpLy.DoNoT.rEpLy.DoNoT.rEpLy.DoNoT.rEpLy@mt50sys.com",
+    "recipientEmail": "alex.morgan@gmail.com",
+    "subject": "ALEX MORGAN ❋ WELCOME TO YOUR FIDELITY ❋ LIFE QUOTE PLANS!❋ - A2QJZ**                                                            ",
+    "bodyText": "ALEX MORGAN, YOUR LIFE INSURANCE QUOTE IS READY TO VIEW\n\nFinal expense coverage from $9.95 a month. No medical exam required. No waiting period. Rates locked for life.\n\nYou have been pre-selected for coverage of up to $50,000 with no health questions asked. Coverage cannot be cancelled once approved and your rate will never increase.\n\nClick below to view your personalised quote plans and secure your rate today. This offer expires within 24 hours of delivery.\n\nView My Quote · Compare Plans · Check Eligibility · Get Covered Now · See Rates\n\nThis is an advertisement. To stop receiving these offers click the unsubscribe link below or write to us at 1200 Corporate Park Suite 400.\n\nUnsubscribe · Privacy Policy · Terms",
+    "links": [
+      { "text": "View My Quote", "href": "http://mt50sys.com/q/a2qjz/view" },
+      { "text": "Compare Plans", "href": "http://mt50sys.com/q/a2qjz/compare" },
+      { "text": "Check Eligibility", "href": "http://mt50sys.com/q/a2qjz/eligibility" },
+      { "text": "Get Covered Now", "href": "http://mt50sys.com/q/a2qjz/apply" },
+      { "text": "See Rates", "href": "http://mt50sys.com/q/a2qjz/rates" },
+      { "text": "click here", "href": "http://mt50sys.com/q/a2qjz/c1" },
+      { "text": "final expense coverage", "href": "http://mt50sys.com/q/a2qjz/c2" },
+      { "text": "no medical exam", "href": "http://mt50sys.com/q/a2qjz/c3" },
+      { "text": "$9.95 a month", "href": "http://mt50sys.com/q/a2qjz/c4" },
+      { "text": "pre-selected", "href": "http://mt50sys.com/q/a2qjz/c5" },
+      { "text": "secure your rate", "href": "http://mt50sys.com/q/a2qjz/c6" },
+      { "text": "24 hours", "href": "http://mt50sys.com/q/a2qjz/c7" },
+      { "text": "Privacy Policy", "href": "http://mt50sys.com/q/a2qjz/privacy" },
+      { "text": "Terms", "href": "http://mt50sys.com/q/a2qjz/terms" },
+      { "text": "Unsubscribe", "href": "http://mt50sys.com/u/a2qjz" }
+    ],
+    "attachments": [
+      { "filename": "noname" }
+    ]
+  }
+}

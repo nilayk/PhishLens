@@ -1,0 +1,31 @@
+{
+  "name": "legitimate-substack-newsletter",
+  "description": "False-positive regression, observed in production: an independent newsletter sent from a platform domain, where every outbound link is rewritten to the platform's own redirector while the anchor text still reads as the destination site. Before the onSenderDomain guard this produced several 'high' displayed-vs-actual mismatches, maxed the link category, and floored the message at 50/100 'Suspicious'. Anchor text naming third-party sites is the whole point of a link roundup and must not be read as deception.",
+  "email": {
+    "senderName": "ARAMSE",
+    "senderEmail": "aramse-the-slow-drip@substack.com",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "subject": "The Slow Drip: Become An Alpha",
+    "bodyText": "Hey Folks,\n\nYes we're aware, this newsletter should have gone out 2 weeks ago, but we're going to pretend like we didn't just skip an entire edition. Anyhoo, onto the coffee (and non-coffee) stuff!\n\nHario Alpha\n\nThe new Hario V60 Alpha landed this month and it is a genuinely odd little brewer. Thicker glass, a flatter bed, and a price that undercuts the Switch by a fair margin. We brewed on it every morning for two weeks and came away liking it more than we expected.\n\nElsewhere: sprudge.com ran a good piece on green coffee pricing, perfectdailygrind.com has a readable explainer on the new harvest forecasts, and our friends at kestrelcoffee.co.uk opened subscriptions again.\n\nRead in app · Share this post · Leave a comment\n\nYou're receiving this because you subscribed to The Slow Drip. Unsubscribe or manage your subscription at any time.",
+    "links": [
+      { "text": "Subscribe here", "href": "https://substack.com/redirect/9c1d4e2a-77b8-4f60-9c31-2ad9f0e14b77?j=eyJ1IjoiM2Fxdjki" },
+      { "text": "READ IN APP", "href": "https://substack.com/app-link/post?publication_id=118842&post_id=148920371" },
+      { "text": "Hario V60 Alpha", "href": "https://substack.com/redirect/3f8a1b90-52cc-4d17-8e0a-6b1f7c2d9e44?j=eyJ1IjoiNWtwdDIi" },
+      { "text": "sprudge.com", "href": "https://substack.com/redirect/1a2b3c4d-9e8f-4a7b-b6c5-d4e3f2a1b098?j=eyJ1IjoiN3ptcTgi" },
+      { "text": "perfectdailygrind.com", "href": "https://substack.com/redirect/8d7c6b5a-4321-4fed-9abc-0123456789ab?j=eyJ1IjoicTR3ZTUi" },
+      { "text": "kestrelcoffee.co.uk", "href": "https://email.mg1.substack.com/c/eJxVkMtuwyAQRb8GdrZ4GBsWWVTq" },
+      { "text": "Share this post", "href": "https://email.mg1.substack.com/c/eJwtjs0OgjAQhJ-m3CDQlkIPHDyY" },
+      { "text": "Leave a comment", "href": "https://email.mg1.substack.com/c/eJwtjssKwjAQRb9mdi1J2rSJCxci" },
+      { "text": "Unsubscribe", "href": "https://substack.com/app-link/post?publication_id=118842&utm_source=email&action=unsubscribe" },
+      { "text": "manage your subscription", "href": "https://substack.com/account/settings" }
+    ],
+    "attachments": [],
+    "auth": {
+      "spf": "pass",
+      "dkim": "pass",
+      "dmarc": "pass",
+      "signedBy": "substack.com",
+      "via": "substack.com"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "anchor-mismatch",
+  "description": "Isolates the displayed-vs-actual URL mismatch: benign sender, benign wording, one link whose visible address is a real brand and whose destination is not.",
+  "email": {
+    "senderName": "Accounts Receivable",
+    "senderEmail": "ar@brightline-supplies.co.uk",
+    "recipientEmail": "sam.okafor@northwind-logistics.com",
+    "subject": "Statement for October",
+    "bodyText": "Hello,\n\nPlease find your October statement summary below. The portal has the full breakdown including the two credit notes we discussed.\n\nView it here: https://login.microsoftonline.com\n\nAny questions, just reply to this message and I'll pick it up.\n\nBest regards,\nAccounts Receivable\nBrightline Supplies Ltd",
+    "links": [
+      {
+        "text": "https://login.microsoftonline.com",
+        "href": "https://account-verification.example/login?next=%2Fstatement"
+      }
+    ],
+    "attachments": [],
+    "auth": {
+      "spf": "pass",
+      "dkim": "pass",
+      "dmarc": "pass",
+      "signedBy": "brightline-supplies.co.uk"
+    }
+  }
+}
