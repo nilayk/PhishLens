@@ -4,7 +4,11 @@
 #   git push --follow-tags
 #
 # The tag is required to agree with package.json, because the manifest version is generated from it and
-# a release whose asset reports a different version than its tag is worse than no release.
+# a release whose asset reports a different version than its tag is worse than no release. When the version
+# has already been written by an earlier commit, tag that commit directly rather than bumping again.
+#
+# The notes are the commit subjects since the previous tag, so a subject that would read as nonsense to
+# someone deciding whether to update is a problem to fix in the commit message, not here.
 name: Release
 
 on:
@@ -19,7 +23,11 @@ jobs:
     name: Build and publish
     runs-on: ubuntu-latest
     steps:
+      # Full history and tags: the release notes are derived from the commits since the previous tag,
+      # which a shallow clone cannot see.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v7
         with:
@@ -60,9 +68,26 @@ jobs:
           cd ..
           unzip -l "phishlens-${{ steps.meta.outputs.version }}.zip"
 
+      # Commit subjects only. They lead with an imperative summary of why the change was needed, which is
+      # already the sentence a reader of the release wants; the bodies are for someone reading the history,
+      # not someone deciding whether to update.
       - name: Write release notes
         run: |
-          cat > notes.md <<'NOTES'
+          set -euo pipefail
+          previous="$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || true)"
+          {
+            echo '### What changed'
+            echo
+            if [ -n "$previous" ]; then
+              git log --no-merges --format='- %s' "$previous..${GITHUB_REF_NAME}"
+              echo
+              echo "[Full diff](${{ github.server_url }}/${{ github.repository }}/compare/$previous...${GITHUB_REF_NAME})"
+            else
+              echo '- First release.'
+            fi
+            echo
+          } > notes.md
+          cat >> notes.md <<'NOTES'
           ### Install
 
           PhishLens is not on the Chrome Web Store. To install this build:
@@ -77,6 +102,7 @@ jobs:
 
           PhishLens is advisory. It does not block links, downloads or replies.
           NOTES
+          cat notes.md
 
       - name: Publish
         env:
