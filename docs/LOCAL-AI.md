@@ -54,15 +54,27 @@ nothing" and "we found something small".
 On-device models are accurate on genuine fraud and markedly over-suspicious on legitimate mail. Gemini
 Nano will rate an ordinary product announcement 95/100 at 98% confidence and give "Suspicious Sender
 Email" and "Link to Unknown Domain" as its reasons — both claims about domains, which is not something it
-can check and not something it was asked about.
+can check and not something it was asked about. Told in the prompt not to reason about domains and shown
+them regardless, it did so anyway: a genuine bank notification scored 85/100 on the reasoning that one of
+its links was not specific enough to the bank's own site.
 
-Three responses, in the order they apply:
+Four responses, in the order they apply:
 
-- **The prompt forbids the subject.** The system prompt tells the model not to reason about domains,
-  links, or addresses at all; those are the deterministic layer's job. It is asked only about intent,
-  pressure, and the plausibility of the request.
+- **The model is not given the subject matter it must not judge.** It receives the sender's display name,
+  the subject and the body — nothing else. No sending domain, no Reply-To, no link destinations, no
+  attachment types. An instruction it cannot follow is worth less than data it cannot see, and everything
+  withheld is checked properly, from the real values, in `analysis/rules/`.
 - **A dead zone.** Any verdict below `minRiskForScoring` (45/100) scores zero regardless of confidence.
+  Below `routineRiskCeiling` (20/100) the finding is also *worded* as clean, because models fill the
+  category slot as a matter of form: one rated an auto-reply 10/100, explained itself with "standard
+  auto-reply", and tagged it `social_engineering` anyway.
 - **Corroboration.** Guarantee 2 above.
+- **Explicit guidance for the mail most often misjudged.** Security and account notices — a password was
+  changed, a device signed in, a statement is ready — read like credential phishing to a model that
+  weighs vocabulary, and are the largest single source of false alarms on real mail. The prompt states
+  that reporting an event that already happened is routine, and that directing the reader to a channel
+  they already have (the number on their card, the app) is the opposite of phishing, since an attacker
+  gains nothing from it.
 
 The verdict is displayed in full either way. It just does not always move the number.
 
@@ -174,7 +186,10 @@ The properties this shape is chosen for:
   `test/privacy.test.ts` asserts field by field what it keeps *and* what must not be present, so a field
   added carelessly later fails the suite.
 - **Deterministic findings travel as ids**, not re-derived, so the backend never needs the data required
-  to recompute them.
+  to recompute them. This is also why the payload may carry `linkDomains` when the local prompt withholds
+  them: they arrive next to the verdicts already reached about them, as context for a judgement rather
+  than as material for a guess. A backend that instead asked its model "does this domain look right"
+  would be reintroducing precisely the false alarm withholding them was meant to end.
 - **HTTPS-only, validated.** `normalizeBackendUrl` accepts only an `https:` origin plus optional path
   prefix, so editing storage cannot point the adapter at `http://`, at a `javascript:` URL, or straight at
   a model vendor.

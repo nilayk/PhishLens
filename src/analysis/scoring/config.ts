@@ -305,6 +305,17 @@ export const SEMANTIC_SCORING = Object.freeze({
    */
   minRiskForScoring: 45,
   /**
+   * Top of the prompt's "routine legitimate mail" band, and the point below which a named category is
+   * disregarded when wording the finding.
+   *
+   * Models fill the `categories` slot as a matter of form. One rated an auto-reply 10/100 and explained
+   * itself with "standard auto-reply", having tagged it `social_engineering` anyway, which the panel
+   * then headlined as wording that resembled social engineering. The rating is the judgement — it is the
+   * number the prompt defines bands for and the number that is scored — so below this the finding reads
+   * as clean regardless of the tag.
+   */
+  routineRiskCeiling: 20,
+  /**
    * Multiplier applied when no deterministic signal scored anything. Zero: the semantic layer may
    * refine a score, never originate one.
    *

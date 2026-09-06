@@ -408,6 +408,40 @@ describe('semantic layer: containment', () => {
     expect(semanticToSignals(at, corroborating)[0]?.score).toBeGreaterThan(0);
   });
 
+  /**
+   * Observed on a real auto-reply: risk 10, confidence 0.9, reasons "standard auto-reply", and
+   * `social_engineering` in the categories slot regardless. The panel headlined it as wording that
+   * mildly resembled social engineering, which is the opposite of what the model concluded.
+   */
+  it('disregards a category the model tagged while rating the message routine', () => {
+    const corroborating = analyzeDeterministic(PHISH, { now: 0 }).signals;
+    const routine = semanticToSignals(
+      semantic({ risk: 10, categories: ['social_engineering'], confidence: 0.9 }),
+      corroborating,
+    );
+
+    expect(routine[0]?.title).toMatch(/nothing of concern/u);
+    expect(routine[0]?.title).not.toMatch(/social engineering/u);
+    expect(routine[0]?.score).toBe(0);
+    // The rating and the model's own words stay visible; only the headline stops overstating them.
+    expect(routine[0]?.description).toMatch(/10\/100/u);
+    // Nothing to explain away, so the dead-zone note is absent.
+    expect(routine[0]?.description).not.toMatch(/do not affect the score/u);
+  });
+
+  it('still reports a category once the rating leaves the routine band', () => {
+    const above = semanticToSignals(
+      semantic({
+        risk: SEMANTIC_SCORING.routineRiskCeiling + 1,
+        categories: ['social_engineering'],
+        confidence: 0.9,
+      }),
+      [],
+    );
+    expect(above[0]?.title).toMatch(/social engineering/u);
+    expect(above[0]?.description).toMatch(/do not affect the score/u);
+  });
+
   it('softens the headline for a sub-threshold reading', () => {
     const mild = semanticToSignals(semantic({ risk: 30, confidence: 0.9 }), []);
     // "Wording resembles credential phishing" on a legitimate message is alarming whatever the score
@@ -614,5 +648,45 @@ describe('prompt construction', () => {
   it('does not include the recipient address', () => {
     const prompt = buildUserPrompt({ ...PHISH, recipientEmail: 'victim@northwind-logistics.com' });
     expect(prompt).not.toContain('victim@northwind-logistics.com');
+  });
+
+  /**
+   * Shown the link domains and told not to reason about them, an on-device model rated a genuine bank
+   * notification 85/100 on the grounds that one of its links was not specific enough to the bank's own
+   * site — a claim it had no way to check, about the one thing `analysis/rules/` checks properly.
+   * Withholding the data is what makes the instruction true rather than merely stated.
+   */
+  it('withholds the domains, link targets and file types it is told not to judge', () => {
+    const prompt = buildUserPrompt({
+      senderName: 'Northwind Bank Alerts',
+      senderEmail: 'alerts@northwind-bank.example',
+      replyTo: 'reply@elsewhere.example',
+      subject: 'Your password was updated',
+      bodyText: 'We are confirming a change to your online banking password.',
+      links: [
+        {
+          href: 'https://northwind-bank-login.example/login',
+          text: 'sign in',
+          normalizedDomain: 'northwind-bank-login.example',
+        },
+      ],
+      attachments: [{ filename: 'statement.pdf', extension: 'pdf' }],
+    });
+
+    expect(prompt).not.toContain('northwind-bank.example');
+    expect(prompt).not.toContain('elsewhere.example');
+    expect(prompt).not.toContain('northwind-bank-login.example');
+    expect(prompt).not.toMatch(/\bpdf\b/u);
+    // What it is allowed to judge is still all there.
+    expect(prompt).toContain('Northwind Bank Alerts');
+    expect(prompt).toContain('Your password was updated');
+    expect(prompt).toContain('online banking password');
+  });
+
+  it('tells the model that notifying the reader of a security event is routine', () => {
+    // The single most misjudged class of legitimate mail, so the guidance for it is asserted rather
+    // than left to drift out of the prompt during a later edit.
+    expect(SYSTEM_PROMPT).toMatch(/already happened|already possess/iu);
+    expect(SYSTEM_PROMPT).toMatch(/not given|are not given/iu);
   });
 });

@@ -106,17 +106,22 @@ export function semanticToSignals(
 
   /*
    * The title is the one line most users read, so it tracks how strong the model's *claim* is, not how
-   * much that claim scored. A hedged or sub-threshold reading is softened, because "Wording resembles
-   * credential phishing" on a legitimate newsletter is alarming regardless of the number beside it. A
-   * confident reading that scored zero for want of corroboration keeps its strong wording — the model
-   * did say it, and the description explains why it did not move the score.
+   * much that claim scored. A hedged reading is softened, because "Wording resembles credential
+   * phishing" on a legitimate newsletter is alarming regardless of the number beside it. A confident
+   * reading that scored zero for want of corroboration keeps its strong wording — the model did say it,
+   * and the description explains why it did not move the score.
+   *
+   * A rating in the routine band outranks the category entirely: see `routineRiskCeiling`. Reporting the
+   * tag anyway would be more faithful to the response and worse for the reader, who cannot act on a
+   * contradiction and would learn to disregard the section.
    */
+  const routine = analysis.risk <= SEMANTIC_SCORING.routineRiskCeiling;
   const hedged =
     analysis.risk < SEMANTIC_SCORING.minRiskForScoring ||
     analysis.confidence < SEMANTIC_SCORING.minConfidenceForScoring;
 
   const headline =
-    meaningfulCategories.length === 0
+    meaningfulCategories.length === 0 || routine
       ? 'Language analysis found nothing of concern'
       : categoryText === ''
         ? 'Wording shows signs of social engineering'
@@ -134,7 +139,9 @@ export function semanticToSignals(
   // Say plainly why a confident-sounding rating contributed little or nothing. Without this the panel
   // shows "rated 60/100" beside a score of 0 and looks broken rather than deliberate.
   if (analysis.confidence >= SEMANTIC_SCORING.minConfidenceForScoring) {
-    if (analysis.risk < SEMANTIC_SCORING.minRiskForScoring) {
+    // Not in the routine band: there the model expressed no suspicion, and explaining away suspicion it
+    // never had reads as a correction of the reader rather than of the model.
+    if (!routine && analysis.risk < SEMANTIC_SCORING.minRiskForScoring) {
       parts.push(
         `Ratings below ${String(SEMANTIC_SCORING.minRiskForScoring)}/100 do not affect the score, because on ordinary mail this model reports mild suspicion far more often than it is warranted.`,
       );
