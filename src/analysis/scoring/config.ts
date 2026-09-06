@@ -170,6 +170,21 @@ export function totalWeight(weights: CategoryWeights = CATEGORY_WEIGHTS): number
 export const DETECTION_TUNING = Object.freeze({
   /** Edit distance at or below which a domain counts as a lookalike of a brand domain. */
   lookalikeMaxEditDistance: 2,
+  /**
+   * Shortest domain name compared against other participants in a conversation.
+   *
+   * Higher than the brand comparison's floor because there is no curated list to anchor it: a thread
+   * can contain any two short domains, and on four characters an edit of one is as likely to be two
+   * unrelated companies as an imitation.
+   */
+  minThreadDomainCoreChars: 5,
+  /**
+   * Shortest display name that may be reported as reused by another participant.
+   *
+   * Short names collide innocently, and the attack this catches depends on the name being recognisable
+   * enough for a reader to trust it.
+   */
+  minThreadNameChars: 5,
   /** Subdomain label count above which the structure itself is suspicious. */
   maxReasonableSubdomainLabels: 4,
   /** Number of distinct link domains above which a message is "link-heavy" (newsletter shape). */

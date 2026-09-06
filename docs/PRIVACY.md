@@ -25,7 +25,10 @@ If a future feature seems to need something broader, that is a signal to reconsi
 
 **Extracted from Gmail** — sender name and address, Reply-To, subject, visible body text (truncated,
 quoted replies removed), link anchor text and hrefs, attachment filenames and extensions, the delivered-to
-address, and Gmail's own authentication summary when it is exposed in the DOM. This lives in memory in the
+address, Gmail's own authentication summary when it is exposed in the DOM, and the names and addresses of
+whoever sent the earlier messages in the open conversation. That last one is needed to tell a reply from a
+party already in a thread from one imitating them, and like everything else it is read from what is
+already on screen: no message is fetched, and nothing outside the open thread is looked at. This lives in memory in the
 content script for as long as the message is on screen, then is dropped. It is never written to
 `chrome.storage`, never sent to the service worker, and never logged in a release build.
 

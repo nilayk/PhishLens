@@ -21,7 +21,12 @@ import {
   normalizeForMatching,
   truncate,
 } from '../shared/text.js';
-import type { EmailAttachment, EmailLink, EmailMessage } from '../shared/types.js';
+import type {
+  EmailAttachment,
+  EmailLink,
+  EmailMessage,
+  ThreadParticipant,
+} from '../shared/types.js';
 import {
   addressDomain,
   countSubdomainLabels,
@@ -117,6 +122,22 @@ export interface AttachmentAnalysis {
   hasBidiTrick: boolean;
 }
 
+/**
+ * A party already in the conversation, normalised the same way the sender is.
+ *
+ * `nameKey` is confusable-folded so `Maria Delgado` and `Мaria Delgado` compare equal — the point of
+ * reusing a name is that it looks identical to a reader, not that it is byte-identical.
+ */
+export interface ThreadParty {
+  email: string;
+  domain: string;
+  registrable: string;
+  /** Display name as shown, kept for evidence. */
+  name: string;
+  /** Folded display name, for comparison. `''` when there was no usable name. */
+  nameKey: string;
+}
+
 /** A brand the message *claims* to be from, and where that claim was found. */
 export interface BrandClaim {
   brand: Brand;
@@ -166,6 +187,19 @@ export interface AnalysisContext {
 
   /** Distinct registrable domains across all resolved link targets. */
   linkRegistrables: Set<string>;
+
+  /**
+   * Parties that sent a message earlier in this conversation, excluding any whose address matches the
+   * sender's own, oldest first.
+   *
+   * Empty both when the message opens a thread and when the client could not tell us — the detectors
+   * treat those identically, since neither is evidence of anything.
+   */
+  priorParties: ThreadParty[];
+  /** Registrable domains already established in the conversation. */
+  priorRegistrables: Set<string>;
+  /** True when there is a conversation history to compare this message against. */
+  inThread: boolean;
 
   claims: BrandClaim[];
   /**
@@ -221,6 +255,8 @@ export function buildContext(email: EmailMessage): AnalysisContext {
     senderRegistrable !== '' &&
     primaryClaim.brand.domains.includes(senderRegistrable);
 
+  const priorParties = normalizeThreadParties(email.thread?.priorSenders ?? [], senderEmail);
+
   return {
     email,
     senderName,
@@ -245,6 +281,9 @@ export function buildContext(email: EmailMessage): AnalysisContext {
     webLinks,
     attachments,
     linkRegistrables,
+    priorParties,
+    priorRegistrables: new Set(priorParties.map((p) => p.registrable).filter((d) => d !== '')),
+    inThread: priorParties.length > 0,
     claims,
     primaryClaim,
     senderAlignedWithClaim,
@@ -291,6 +330,49 @@ function analyzeLink(link: EmailLink, index: number, senderRegistrable: string):
     anchorText: normalizeForMatching(link.text).slice(0, 300),
   };
 }
+
+/**
+ * Normalises the conversation history and drops the sender's own earlier messages.
+ *
+ * Dropping them matters: a genuine correspondent replying twice would otherwise be compared against
+ * themselves, and every long thread would be full of self-matches for the name rules to trip over.
+ * De-duplicated by address so a ten-message thread between two people yields two parties, and bounded
+ * so a thread built to be enormous costs a fixed amount.
+ */
+function normalizeThreadParties(
+  priorSenders: readonly ThreadParticipant[],
+  senderEmail: string,
+): ThreadParty[] {
+  const parties: ThreadParty[] = [];
+  const seen = new Set<string>();
+
+  for (const participant of priorSenders.slice(0, MAX_THREAD_PARTIES)) {
+    const email = participant.email.trim().toLowerCase();
+    const name = participant.name.trim();
+    if (email === '' && name === '') continue;
+    if (email !== '' && email === senderEmail) continue;
+
+    const key = `${email}\u0000${name.toLowerCase()}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    const domain = addressDomain(email);
+    parties.push({
+      email,
+      domain,
+      registrable: registrableDomain(domain),
+      name: truncate(name, 300),
+      // A name that folds to almost nothing (`.`, `--`) is not a name; treat it as absent so the
+      // reuse rule cannot match two participants on emptiness.
+      nameKey: skeleton(name).length >= 2 ? skeleton(name) : '',
+    });
+  }
+
+  return parties;
+}
+
+/** Upper bound on conversation history examined. A thread can be arbitrarily long. */
+const MAX_THREAD_PARTIES = 60;
 
 function analyzeAttachment(attachment: EmailAttachment, index: number): AttachmentAnalysis {
   const filename = attachment.filename.trim();

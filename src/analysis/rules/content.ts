@@ -60,7 +60,14 @@ const CONTENT_PATTERNS: readonly ContentPattern[] = [
     severity: 'medium',
     score: 24,
     patterns: [
-      /\b(verify|confirm|validate|update|re-?enter|re-?confirm)\b[^.!?]{0,40}\b(your )?(account|identity|password|credentials?|login|sign[- ]?in|details|information)\b/u,
+      /\b(verify|confirm|validate|update|re-?enter|re-?confirm)\b[^.!?]{0,40}\b(your )?(account|identity|password|credentials?|login|sign[- ]?in)\b/u,
+      // `details` and `information` need a qualifier naming what kind. Unqualified, they cover most of
+      // ordinary business correspondence — "confirm the delivery details", "once the payment details
+      // are updated", "we have updated our contact information" — none of which asks for a credential,
+      // and all of which would be reported under a title claiming it did. Payment and bank wording is
+      // deliberately not a qualifier here: that is a funds request, which `payment_transfer` reports
+      // with the right explanation.
+      /\b(verify|confirm|validate|update|re-?enter|re-?confirm)\b[^.!?]{0,40}\b(your )?(account|login|sign[- ]?in|security|password|identity|personal)\s+(details|information|info)\b/u,
       /\b(sign|log)[- ]?in\b[^.!?]{0,40}\b(to (verify|confirm|continue|avoid|restore|unlock|reactivate)|immediately|now)\b/u,
       /\b(click|tap|follow|use)\b[^.!?]{0,30}\b(link|button|here)\b[^.!?]{0,40}\b(sign|log)[- ]?in\b/u,
       /\b(your )?(password|credentials?) (will|must|needs? to) (be )?(expire|expired|expiring|updated?|changed?|reset|confirmed?|verified?)\b/u,
@@ -91,7 +98,15 @@ const CONTENT_PATTERNS: readonly ContentPattern[] = [
     severity: 'medium',
     score: 20,
     patterns: [
-      /\b(account|access|profile|mailbox|subscription)\b[^.!?]{0,40}\b(suspend|suspended|suspension|terminat|deactivat|disabl|clos(e|ed|ure)|delet|lock(ed)?|restrict|limit(ed|ation)?|block(ed)?|on hold)\b/u,
+      /\b(account|access|profile|mailbox|subscription)\b[^.!?]{0,40}\b(suspend|suspended|suspension|terminat|deactivat|disabl|delet|lock(ed)?|restrict|limit(ed|ation)?|block(ed)?|on hold)\b/u,
+      // Closure is separated from the verbs above and requires the reader's own account, because it is
+      // the one that also describes a *bank* account: "my old account is being closed, use these details
+      // instead" is the machinery of payment diversion, not a threat to anyone's access, and reporting it
+      // as one sends the reader looking for a warning about their login that the message never made.
+      // Payment diversion is not thereby missed — `payment_transfer` and `payroll_change` report it, with
+      // the explanation that matches what the message actually says.
+      /\byour\b[^.!?]{0,24}\b(account|access|profile|mailbox|subscription)\b[^.!?]{0,40}\bclos(e|ed|ure|ing)\b/u,
+      /\bclos(e|ed|ure|ing)\b[^.!?]{0,24}\byour\b[^.!?]{0,24}\b(account|access|profile|mailbox|subscription)\b/u,
       /\b(unusual|suspicious|unauthori[sz]ed|unrecogni[sz]ed) (sign[- ]?in|login|activity|access|attempt)\b/u,
       /\b(we (have )?(detected|noticed|identified)|there (was|has been))\b[^.!?]{0,50}\b(unusual|suspicious|unauthori[sz]ed|problem|issue)\b/u,
       /\b(permanently|immediately) (delet|remov|clos|suspend|disabl)/u,

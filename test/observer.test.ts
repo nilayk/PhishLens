@@ -59,6 +59,7 @@ class FakeAdapter implements MailAdapter {
     return {
       messageId: this.view.messageId,
       threadId: this.view.threadId,
+      priorSenders: [],
       headerElement: null,
       bodyElement: null,
       root: {} as Element,
@@ -417,6 +418,7 @@ describe('signatures', () => {
   const handle = (messageId: string, threadId: string): MessageHandle => ({
     messageId,
     threadId,
+    priorSenders: [],
     headerElement: null,
     bodyElement: null,
     root: {} as Element,

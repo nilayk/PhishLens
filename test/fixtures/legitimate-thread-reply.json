@@ -1,0 +1,26 @@
+{
+  "name": "legitimate-thread-reply",
+  "description": "The false positive the thread rules must not produce. An ordinary working conversation in which the cast changes for entirely normal reasons: a colleague at the sender's own company answers from a different mailbox, an external consultant is looped in from a domain nobody in the thread has used before, and a participant replies from the company's country domain rather than its .com. All three are new senders relative to the thread, so a rule that fired on unfamiliarity would fire three times here. None of them resembles an established domain, which is the distinction the rules are built on. Also carries routine payment wording, so it doubles as a check that thread context does not amplify the content heuristics.",
+  "email": {
+    "senderName": "Jonas Weber",
+    "senderEmail": "jonas.weber@northwind-supply.de",
+    "recipientEmail": "alex.morgan@brightpath-interiors.com",
+    "subject": "Re: PO 4471 - remittance for September deliveries",
+    "bodyText": "Hi Alex,\n\nPicking this up from Priya while she is on leave, and copying in Tomas who is handling the Hamburg leg of the shipment.\n\nThe September deliveries are all confirmed against PO 4471. Invoice totals are unchanged from the schedule Priya sent, and our usual thirty day terms apply, so payment would be due on the 30th to the account already on file.\n\nTomas will send the revised delivery windows separately once the carrier confirms.\n\nBest regards,\nJonas Weber\nNorthwind Supply GmbH",
+    "auth": {
+      "spf": "pass",
+      "dkim": "pass",
+      "dmarc": "pass",
+      "signedBy": "northwind-supply.de",
+      "mailedBy": "northwind-supply.de"
+    },
+    "thread": {
+      "priorSenders": [
+        { "email": "alex.morgan@brightpath-interiors.com", "name": "Alex Morgan" },
+        { "email": "priya.raman@northwind-supply.com", "name": "Priya Raman" },
+        { "email": "t.okafor@harbourline-freight.com", "name": "Tomas Okafor" },
+        { "email": "alex.morgan@brightpath-interiors.com", "name": "Alex Morgan" }
+      ]
+    }
+  }
+}

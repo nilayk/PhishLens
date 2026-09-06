@@ -105,6 +105,19 @@ export function tldOf(hostname: string): string {
 }
 
 /**
+ * The name part of a domain, with its suffix removed: `northwind-supply.co.uk` → `northwind-supply`.
+ *
+ * What lookalike comparison has to run on. Comparing whole domains would rate `example.com` and
+ * `example.de` as one edit apart when they are usually the same organisation, while missing that
+ * `example.com` and `examp1e.com` differ in the only part a reader reads.
+ */
+export function domainCore(hostname: string): string {
+  const registrable = registrableDomain(hostname);
+  const dot = registrable.indexOf('.');
+  return dot <= 0 ? registrable : registrable.slice(0, dot);
+}
+
+/**
  * True for any host that is an IP literal rather than a name — including the obfuscated forms
  * (`http://3232235777/`, `http://0xc0a80001/`, `http://0300.0250.0.1/`) that the WHATWG parser
  * accepts and silently canonicalises. We check the *parsed* result where possible, and fall back to

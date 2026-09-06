@@ -15,11 +15,13 @@ import { detectContentSignals } from './content.js';
 import { detectCorrelatedSignals } from './correlate.js';
 import { detectIdentitySignals } from './identity.js';
 import { detectLinkSignals } from './links.js';
+import { detectThreadSignals } from './thread.js';
 
 export function runRuleEngine(context: AnalysisContext): SecuritySignal[] {
   const perCategory = [
     ...detectAuthenticationSignals(context),
     ...detectIdentitySignals(context),
+    ...detectThreadSignals(context),
     ...detectLinkSignals(context),
     ...detectAttachmentSignals(context),
     ...detectContentSignals(context),

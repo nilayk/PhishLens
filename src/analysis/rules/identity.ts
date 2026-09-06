@@ -9,6 +9,7 @@ import { BRANDS, brandOwningDomain } from '../../shared/brands.js';
 import { FREEMAIL_DOMAINS } from '../../shared/public-suffix.js';
 import type { SecuritySignal } from '../../shared/types.js';
 import {
+  domainCore,
   hasPunycode,
   isIpHost,
   isKnownTrackingRedirector,
@@ -112,13 +113,13 @@ export function findLookalike(candidate: string): LookalikeMatch | null {
   if (brandOwningDomain(domain) !== undefined) return null;
 
   const rendered = decodeIdnHost(domain);
-  const candidateSkeleton = skeleton(stripTld(rendered));
+  const candidateSkeleton = skeleton(domainCore(rendered));
 
   let best: LookalikeMatch | null = null;
 
   for (const brand of BRANDS) {
     for (const target of brand.lookalikeTargets) {
-      const targetCore = stripTld(target);
+      const targetCore = domainCore(target);
       const targetSkeleton = skeleton(targetCore);
       if (targetSkeleton.length < 4) continue;
 
@@ -148,11 +149,6 @@ export function findLookalike(candidate: string): LookalikeMatch | null {
     }
   }
   return best;
-}
-
-function stripTld(domain: string): string {
-  const dot = domain.indexOf('.');
-  return dot <= 0 ? domain : domain.slice(0, dot);
 }
 
 /**
@@ -626,8 +622,8 @@ function lookalikeOfRecipientDomain(context: AnalysisContext): SecuritySignal[] 
   if (recipientDomain === context.senderRegistrable) return [];
   if (FREEMAIL_DOMAINS.has(recipientDomain)) return [];
 
-  const senderCore = skeleton(stripTld(decodeIdnHost(context.senderRegistrable)));
-  const recipientCore = skeleton(stripTld(recipientDomain));
+  const senderCore = skeleton(domainCore(decodeIdnHost(context.senderRegistrable)));
+  const recipientCore = skeleton(domainCore(recipientDomain));
   if (recipientCore.length < 5) return [];
 
   const maxDistance = DETECTION_TUNING.lookalikeMaxEditDistance;

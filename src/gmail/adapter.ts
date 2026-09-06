@@ -5,7 +5,7 @@
  * Gmail for another client, or for a test double, means providing another implementation and changing
  * nothing in the detection or scoring layers.
  */
-import type { EmailMessage } from '../shared/types.js';
+import type { EmailMessage, ThreadParticipant } from '../shared/types.js';
 
 /** An opaque handle to the message currently on screen. */
 export interface MessageHandle {
@@ -13,6 +13,13 @@ export interface MessageHandle {
   messageId: string;
   /** Stable provider id for the thread, when available. */
   threadId: string;
+  /**
+   * Senders of the messages above this one in the conversation, oldest first.
+   *
+   * Collected here rather than in `extract` because only the code that chose *which* message to assess
+   * knows where the boundary between "before" and "after" falls.
+   */
+  priorSenders: ThreadParticipant[];
   /** The element the badge should be attached near. */
   headerElement: Element | null;
   /** The element containing the rendered body, for link location and highlighting. */

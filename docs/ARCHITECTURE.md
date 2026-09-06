@@ -277,6 +277,14 @@ class names (`.a3s`, `.gD`, `.hP`) churn far more often than its data attributes
 individually `try`-wrapped per field: a Gmail redesign that breaks attachment extraction degrades to
 "no attachment signals", it does not break the extension.
 
+Two things are read from outside the assessed message, and both are constrained the same way. The
+recipient row tells a message the user *sent* from one merely claiming to be from them, and the senders of
+the messages above it give detection the conversation history that reply-chain hijacking is invisible
+without. Both are read **from message headers only, never from a body**: an `email` attribute is one
+`<span>` away, so a message allowed to nominate its own participants could fabricate a history in which
+the attacker's domain was always present, and switch off the rules that read it. Everything used here is
+markup Gmail generated, not markup a sender supplied.
+
 Swapping in a different mail client means writing one new `MailAdapter` implementation. Nothing in
 `src/analysis/` changes.
 
@@ -291,7 +299,7 @@ EmailMessage
    │                      domains, confusable skeletons, claimed-brand detection
    │                      → AnalysisContext  (detectors are pure fns of this)
    │
-   ├─ detectors           identity · link · attachment · content · authentication
+   ├─ detectors           identity · thread · link · attachment · content · authentication
    │                      each returns SecuritySignal[]
    │
    ├─ refine()            cross-signal dampening for false-positive resistance (§4.2)

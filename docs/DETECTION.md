@@ -17,7 +17,7 @@ a separate section of the card, and different wording in each.
 
 ## What is checked
 
-Five deterministic categories, each a directory of detectors under `src/analysis/rules/`.
+Six groups of deterministic detectors, under `src/analysis/rules/`.
 
 **Identity** (`identity.ts`) — impersonation of an organisation. Lookalike domains within a bounded edit
 distance of a real one, homoglyph and mixed-script spellings, punycode, brand names placed in a subdomain
@@ -32,6 +32,21 @@ carrying a second URL, credential-related wording pointing at an unrelated domai
 
 **Attachments** (`attachments.ts`) — executable and script types, macro-enabled documents, archives,
 double extensions, and right-to-left override characters used to make `invoice⁧fdp.exe` read as a PDF.
+
+**Conversation** (`thread.ts`) — whether a reply came from a party already in the thread. Reply-chain
+hijacking is the one attack that is invisible to every rule above: the attacker answers into a real
+conversation, so the quoted history is genuine, the subject is a legitimate `Re:`, authentication passes
+because they own the domain they send from, and the party being imitated is nobody's brand — it is
+whoever this reader happens to do business with. Two things are reported: a sending domain that is a
+homoglyph or near-miss of one already in the conversation, and a display name belonging to an existing
+participant arriving from an unrelated domain. Signals are filed under `identity`.
+
+What is deliberately *not* reported is a merely unfamiliar sender. People join threads constantly — a
+colleague is looped in, a vendor hands over to another rep, a ticket system answers from a new address —
+so "new domain in this thread" would fire on ordinary correspondence daily. Only resemblance to an
+established party counts, because resemblance is the part with no innocent explanation. For the same
+reason an identical name under a different suffix (`example.de` alongside `example.com`) is treated as one
+organisation: unlike the brand rules, nothing here enumerates which domains a company really owns.
 
 **Content** (`content.ts`) — requests to sign in or confirm credentials, payment and bank-detail changes,
 gift cards, manufactured urgency and consequence, and the structural tells of a lure (a body that is

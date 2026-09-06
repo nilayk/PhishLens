@@ -1,0 +1,26 @@
+{
+  "name": "thread-hijack-name-reuse",
+  "description": "The same attack without a lookalike domain: the attacker keeps the display name of a participant already in the thread and sends from an unrelated consumer mailbox, relying on the mail client showing the name and hiding the address. No domain here resembles any other, so the lookalike rule cannot fire and only the name-reuse rule can. Sender name identical to a prior participant, address on a freemail domain, and a Reply-To pointing somewhere else again.",
+  "email": {
+    "senderName": "Priya Raman",
+    "senderEmail": "priya.raman.northwind@gmail.com",
+    "replyTo": "accounts.northwind@fastmailer-relay.com",
+    "recipientEmail": "alex.morgan@brightpath-interiors.com",
+    "subject": "Re: PO 4471 - remittance for September deliveries",
+    "bodyText": "Hi Alex,\n\nApologies for mailing from my personal address, our mail server is being migrated this week and outbound is unreliable.\n\nBefore you release the September remittance, please note our receiving account has changed. New details are below for PO 4471 and anything outstanding.\n\nAccount name: Northwind Supply Ltd\nSort code: 20-45-88\nAccount number: 61094427\n\nPlease treat this as confirmation from our side so there is no need to call the office, everyone is tied up with the migration. Let me know once the payee record is updated.\n\nBest,\nPriya Raman\nAccounts Receivable, Northwind Supply",
+    "auth": {
+      "spf": "pass",
+      "dkim": "pass",
+      "dmarc": "pass",
+      "signedBy": "gmail.com",
+      "mailedBy": "gmail.com"
+    },
+    "thread": {
+      "priorSenders": [
+        { "email": "alex.morgan@brightpath-interiors.com", "name": "Alex Morgan" },
+        { "email": "priya.raman@northwind-supply.com", "name": "Priya Raman" },
+        { "email": "alex.morgan@brightpath-interiors.com", "name": "Alex Morgan" }
+      ]
+    }
+  }
+}

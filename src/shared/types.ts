@@ -52,6 +52,29 @@ export interface EmailAuthInfo {
   unauthenticatedIndicator?: boolean;
 }
 
+/** A party the mail client showed as the sender of a message in the conversation. */
+export interface ThreadParticipant {
+  /** Lowercased address, or `''` when the header named none. Hostile input. */
+  email: string;
+  /** Display name exactly as shown, or `''` when absent. Hostile input. */
+  name: string;
+}
+
+/**
+ * What the conversation looked like *before* the assessed message.
+ *
+ * Present so detection can ask whether a reply came from a party already in the thread, which is the
+ * only way to see a reply-chain hijack: the attacker's message quotes a genuine history, so judged on
+ * its own it looks like ordinary correspondence.
+ *
+ * Read from message headers already rendered on screen — never from a message body, which is
+ * attacker-controlled and one `<span email="…">` away from inventing a participant.
+ */
+export interface ThreadContext {
+  /** Senders of the messages above the assessed one, oldest first, including the reader's own. */
+  priorSenders: ThreadParticipant[];
+}
+
 export interface EmailMessage {
   senderName?: string;
   senderEmail?: string;
@@ -67,6 +90,8 @@ export interface EmailMessage {
   /** Opaque provider identifiers, used only for change detection and never sent anywhere. */
   messageId?: string;
   threadId?: string;
+  /** The conversation this message arrived into. Absent when it is the only message on screen. */
+  thread?: ThreadContext;
   /** Un-normalised forms of fields whose *formatting* is itself evidence. See `RawFields`. */
   raw?: RawFields;
 }

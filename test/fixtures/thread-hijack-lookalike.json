@@ -1,0 +1,26 @@
+{
+  "name": "thread-hijack-lookalike",
+  "description": "Reply-chain hijack, the pattern behind most invoice fraud losses. A genuine six-week purchasing thread with northwind-supply.com is answered by northwlnd-supply.com (i replaced by l), which asks for the remittance account to be changed. Judged on its own the message is unremarkable: the sender is not a famous brand so the brand table cannot help, authentication passes because the attacker owns the lookalike domain and configured it properly, the subject is a legitimate Re:, there are no links and no attachments, and the wording matches the thread it is answering. The only thing wrong with it is who sent it, which is visible only by comparing against the conversation. Company names invented; structure modelled on published BEC case reports.",
+  "email": {
+    "senderName": "Priya Raman",
+    "senderEmail": "priya.raman@northwlnd-supply.com",
+    "recipientEmail": "alex.morgan@brightpath-interiors.com",
+    "subject": "Re: PO 4471 - remittance for September deliveries",
+    "bodyText": "Hi Alex,\n\nThanks for confirming the delivery schedule last week.\n\nOne administrative note before you process the September remittance: our finance team has moved our receiving account to a new bank as part of the group restructure. Please use the details below for PO 4471 and anything outstanding after it.\n\nAccount name: Northwind Supply Ltd\nSort code: 20-45-88\nAccount number: 61094427\n\nThe old account is being closed at the end of the month so anything sent there will bounce back and delay things. Could you confirm once the payment details are updated on your side?\n\nBest,\nPriya Raman\nAccounts Receivable, Northwind Supply",
+    "auth": {
+      "spf": "pass",
+      "dkim": "pass",
+      "dmarc": "pass",
+      "signedBy": "northwlnd-supply.com",
+      "mailedBy": "northwlnd-supply.com"
+    },
+    "thread": {
+      "priorSenders": [
+        { "email": "alex.morgan@brightpath-interiors.com", "name": "Alex Morgan" },
+        { "email": "priya.raman@northwind-supply.com", "name": "Priya Raman" },
+        { "email": "alex.morgan@brightpath-interiors.com", "name": "Alex Morgan" },
+        { "email": "priya.raman@northwind-supply.com", "name": "Priya Raman" }
+      ]
+    }
+  }
+}

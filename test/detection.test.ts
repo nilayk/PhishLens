@@ -6,7 +6,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import { buildContext } from '../src/analysis/context.js';
+import type { ThreadParty } from '../src/analysis/context.js';
 import { analyzeDeterministic } from '../src/analysis/engine.js';
+import { findParticipantLookalike } from '../src/analysis/rules/thread.js';
 import { __testables as contentTestables } from '../src/analysis/rules/content.js';
 import { __testables as adapterTestables } from '../src/gmail/dom-adapter.js';
 import { isCaseScrambled, repeatedUnitCount } from '../src/analysis/rules/identity.js';
@@ -20,6 +22,7 @@ const LEGITIMATE_FIXTURES = [
   'legitimate-newsletter',
   'legitimate-substack-newsletter',
   'legitimate-invoice',
+  'legitimate-thread-reply',
 ];
 
 const MALICIOUS_FIXTURES = [
@@ -34,6 +37,8 @@ const MALICIOUS_FIXTURES = [
   'anchor-mismatch',
   'zip-attachment',
   'brand-spoof-leadgen',
+  'thread-hijack-lookalike',
+  'thread-hijack-name-reuse',
 ];
 
 const FIXED_NOW = 1_760_000_000_000;
@@ -104,14 +109,46 @@ describe('legitimate password reset (false-positive resistance)', () => {
     expect(result.categoryScores.link).toBe(0);
   });
 
-  it('dampens rather than deletes the content observations', () => {
-    // The wording *is* a credential-verification pattern; we say so, weighted down, rather than
-    // pretending the pattern is absent. Users who cannot see why a score is low do not trust it.
+  /**
+   * The genuine notice trips no wording rule at all, including on the sentence promising never to ask
+   * for credentials — "we will never ask you to confirm your details" used to be reported as a request
+   * to confirm credentials, which inverted the meaning of the only sentence in the message about them.
+   */
+  it('raises no content findings on a real provider notice', () => {
     const content = result.signals.filter((s) => s.category === 'content' && s.severity !== 'info');
-    expect(content.length).toBeGreaterThan(0);
-    for (const s of content) {
-      expect(s.description).toMatch(/[Ww]eighted down/u);
-    }
+    expect(content).toEqual([]);
+  });
+
+  /**
+   * Dampening on its own terms: hold the verified sender constant and give the message wording that
+   * genuinely matches a heuristic. The finding must survive, weighted down — a score whose reasoning is
+   * hidden is not one a user can check, so a softened finding is still shown.
+   */
+  it('dampens rather than deletes a wording finding from a verified sender', () => {
+    const genuine = loadFixture('legitimate-password-reset').email;
+    const withUrgency = {
+      ...genuine,
+      bodyText: `${genuine.bodyText}\n\nPlease act immediately: this request expires today.`,
+    };
+
+    const verified = signalFor(
+      analyzeDeterministic(withUrgency, { now: FIXED_NOW }),
+      'content.urgency',
+    );
+    const impostor = signalFor(
+      analyzeDeterministic(
+        { ...withUrgency, senderEmail: 'service@paypal-account-recovery.com' },
+        { now: FIXED_NOW },
+      ),
+      'content.urgency',
+    );
+
+    // Present in both, so the reasoning stays visible; softened in one, so it stops driving the score.
+    expect(verified).toBeDefined();
+    expect(verified?.dampened).toBe(true);
+    expect(verified?.description).toMatch(/[Ww]eighted down/u);
+    expect(impostor?.dampened).toBeUndefined();
+    expect(verified?.score).toBeLessThan(impostor?.score ?? 0);
   });
 
   it('scores dramatically lower than the identical wording from a lookalike domain', () => {
@@ -571,6 +608,223 @@ describe('brand impersonation with no brand-table entry', () => {
     expect(result.categoryScores.identity).toBeGreaterThan(0);
     expect(result.categoryScores.content).toBeGreaterThan(0);
     expect(result.score - result.categoryScores.link).toBeGreaterThanOrEqual(25);
+  });
+});
+
+/**
+ * Reply-chain hijacking, which is invisible to every rule that judges a message alone: the quoted
+ * history is real, the subject is a genuine `Re:`, authentication passes because the attacker owns the
+ * domain they are sending from, and the imitated party is not in any brand table because it is whoever
+ * this reader does business with.
+ */
+describe('reply-chain hijack by a lookalike domain', () => {
+  const result = analyzeFixture('thread-hijack-lookalike');
+
+  it('scores high risk on a message with no links, no attachments and passing authentication', () => {
+    expect(result.score).toBeGreaterThanOrEqual(75);
+    expect(result.classification).toBe('high-risk');
+    expect(result.categoryScores.link).toBe(0);
+    expect(result.categoryScores.attachment).toBe(0);
+  });
+
+  it('names the participant being imitated, not a brand', () => {
+    const s = signalFor(result, 'identity.thread_lookalike_participant');
+    expect(s?.description).toContain('northwind-supply.com');
+    expect(s?.description).toContain('northwlnd-supply.com');
+    expect(s?.evidence?.value).toBe('northwlnd-supply.com vs northwind-supply.com');
+  });
+
+  it('reaches its verdict without the brand table and without the llm', () => {
+    expect(hasSignal(result, 'identity.lookalike_sender_domain')).toBe(false);
+    expect(hasSignal(result, 'identity.display_name_impersonation')).toBe(false);
+    expect(result.categoryScores.llm).toBe(0);
+  });
+
+  /**
+   * The same message without the conversation is the control. Its wording still reaches `suspicious`
+   * on the content rules alone — asking for bank details to be changed is not innocent language — but
+   * only the thread comparison turns that into a verdict, which is the capability being added.
+   */
+  it('needs the conversation to reach high risk', () => {
+    const { thread: _thread, ...withoutHistory } = loadFixture('thread-hijack-lookalike').email;
+    const blind = analyzeDeterministic(withoutHistory, { now: FIXED_NOW });
+
+    expect(blind.classification).not.toBe('high-risk');
+    expect(result.score).toBeGreaterThan(blind.score);
+    expect(hasSignal(blind, 'identity.thread_lookalike_participant')).toBe(false);
+  });
+});
+
+describe('reply-chain hijack reusing a participant name', () => {
+  const result = analyzeFixture('thread-hijack-name-reuse');
+
+  it('scores at least suspicious', () => {
+    expect(result.score).toBeGreaterThanOrEqual(50);
+    expect(['suspicious', 'high-risk']).toContain(result.classification);
+  });
+
+  it('reports the reused name with both addresses so the reader can check it', () => {
+    const s = signalFor(result, 'identity.thread_participant_name_reuse');
+    expect(s?.description).toContain('Priya Raman');
+    expect(s?.evidence?.value).toBe(
+      'priya.raman.northwind@gmail.com vs priya.raman@northwind-supply.com',
+    );
+  });
+
+  it('does not claim a lookalike domain, because no domain here resembles another', () => {
+    expect(hasSignal(result, 'identity.thread_lookalike_participant')).toBe(false);
+  });
+
+  /** One attack, so one finding. The domain comparison is the more checkable of the two. */
+  it('reports the lookalike domain alone when both would apply', () => {
+    const both = analyzeFixture('thread-hijack-lookalike');
+    expect(hasSignal(both, 'identity.thread_lookalike_participant')).toBe(true);
+    expect(hasSignal(both, 'identity.thread_participant_name_reuse')).toBe(false);
+  });
+});
+
+/**
+ * `confirm`/`update` near `details`/`information` is most of ordinary business correspondence. Matching
+ * it reported those messages under a title asserting they asked for a credential, which is both wrong
+ * and unverifiable — the reader looks for the request and there is none.
+ */
+describe('credential wording versus ordinary business wording', () => {
+  const fires = (bodyText: string): boolean =>
+    hasSignal(
+      analyzeDeterministic(
+        { senderEmail: 'anna@harbourline-freight.com', bodyText, links: [], attachments: [] },
+        { now: FIXED_NOW },
+      ),
+      'content.credential_verification',
+    );
+
+  it.each([
+    'Could you confirm once the payment details are updated on your side?',
+    'Please confirm the delivery details for Thursday.',
+    'We have updated our contact information on the portal.',
+    'Can you confirm your travel details before I book?',
+    'We will never ask you to confirm your details by replying to an email.',
+  ])('stays silent on %s', (text) => {
+    expect(fires(text)).toBe(false);
+  });
+
+  it.each([
+    'Please verify your account to continue.',
+    'You must confirm your password before Friday.',
+    'Update your login information using the link below.',
+    'Re-enter your credentials to restore access.',
+    'Confirm your security information to avoid interruption.',
+  ])('still fires on %s', (text) => {
+    expect(fires(text)).toBe(true);
+  });
+});
+
+/**
+ * "Closed" is the one consequence verb that also describes a *bank* account, and payment-diversion mail
+ * leans on it: "my old account is being closed, use these details instead". Reported as a threat to
+ * account access, it sends the reader hunting for a warning about their login the message never made —
+ * while the real problem, a changed payee, is reported by the payment rules with the right words.
+ */
+describe('threats to account access versus a sender closing an account', () => {
+  const fires = (bodyText: string): boolean =>
+    hasSignal(
+      analyzeDeterministic(
+        { senderEmail: 'anna@harbourline-freight.com', bodyText, links: [], attachments: [] },
+        { now: FIXED_NOW },
+      ),
+      'content.account_threat',
+    );
+
+  it.each([
+    'My old account is being closed at the end of the week, so use the details below.',
+    'The old account is being closed and anything sent there will bounce back.',
+    'Our receiving account is being closed as part of the group restructure.',
+  ])('stays silent on %s', (text) => {
+    expect(fires(text)).toBe(false);
+  });
+
+  it.each([
+    'Your account will be closed on Friday unless you act.',
+    'We will close your account if this is not resolved.',
+    'Your account has been suspended pending review.',
+    // No possessive at all, and still unmistakably about the reader's access.
+    'If we do not hear from you the account will remain locked.',
+  ])('still fires on %s', (text) => {
+    expect(fires(text)).toBe(true);
+  });
+});
+
+/**
+ * The counterweight. New senders appear in threads constantly for innocent reasons, so the rules key on
+ * *resemblance* to an established party rather than unfamiliarity. This fixture contains three new
+ * senders at once and must stay silent on all of them.
+ */
+describe('ordinary changes of cast within a thread', () => {
+  const result = analyzeFixture('legitimate-thread-reply');
+
+  it('stays low', () => {
+    expect(result.classification).toBe('low');
+  });
+
+  it('raises no thread findings for an unfamiliar sender', () => {
+    expect(hasSignal(result, 'identity.thread_lookalike_participant')).toBe(false);
+    expect(hasSignal(result, 'identity.thread_participant_name_reuse')).toBe(false);
+  });
+
+  /**
+   * `northwind-supply.de` against `northwind-supply.com` is the case that decides whether this rule is
+   * usable. The names are identical and only the suffix differs, which is overwhelmingly one company
+   * rather than an imitation — companies reply from country domains every day — so it is deliberately
+   * not reported, unlike the brand rule where the real domains are enumerated.
+   */
+  it('treats the same name under a different suffix as the same organisation', () => {
+    const parties = buildContext(loadFixture('legitimate-thread-reply').email).priorParties;
+    expect(findParticipantLookalike('northwind-supply.de', parties)).toBeNull();
+  });
+});
+
+describe('participant lookalike comparison', () => {
+  const party = (email: string, name = 'Sam Reeve'): ThreadParty[] =>
+    buildContext({
+      senderEmail: 'reader@example.org',
+      bodyText: '',
+      links: [],
+      attachments: [],
+      thread: { priorSenders: [{ email, name }] },
+    }).priorParties;
+
+  it('catches a homoglyph substitution as conclusive', () => {
+    const match = findParticipantLookalike('nоrthwind-supply.com', party('ap@northwind-supply.com'));
+    expect(match?.kind).toBe('confusable');
+  });
+
+  /**
+   * `i` for `l` folds to the same skeleton, so the substitution attackers most often reach for is
+   * caught as visually identical rather than as an edit. Asserted so the stronger classification is not
+   * lost by a change to the confusable table.
+   */
+  it('treats an i-for-l substitution as visually identical', () => {
+    const match = findParticipantLookalike('northwlnd-supply.com', party('ap@northwind-supply.com'));
+    expect(match?.kind).toBe('confusable');
+  });
+
+  it('catches a dropped character as an edit', () => {
+    const match = findParticipantLookalike('northwind-suply.com', party('ap@northwind-supply.com'));
+    expect(match?.kind).toBe('edit-distance');
+    expect(match?.distance).toBe(1);
+  });
+
+  it('ignores unrelated domains', () => {
+    expect(findParticipantLookalike('harbourline-freight.com', party('ap@northwind-supply.com'))).toBeNull();
+  });
+
+  /** On a short name an edit of one is as likely to be two unrelated companies as an imitation. */
+  it('will not compare names too short to be distinctive', () => {
+    expect(findParticipantLookalike('acme.com', party('ap@acne.com'))).toBeNull();
+  });
+
+  it('says nothing about a sender already established in the conversation', () => {
+    expect(findParticipantLookalike('northwind-supply.com', party('ap@northwind-supply.com'))).toBeNull();
   });
 });
 

@@ -21,6 +21,7 @@ import type {
   EmailLink,
   EmailMessage,
   RawFields,
+  ThreadParticipant,
 } from '../shared/types.js';
 import { normalizeDomain, parseUrl } from '../shared/url.js';
 import type { MailAdapter, MessageHandle } from './adapter.js';
@@ -86,9 +87,10 @@ export class GmailDomAdapter implements MailAdapter {
       'currentMessage',
       () => {
         const root = this.observationRoot() ?? document.body;
-        const candidates = queryAllUnion(root, SELECTORS.messageContainer).filter((element) =>
-          isExpanded(element),
-        );
+        // Every row in the thread, collapsed rows included, so the conversation history is available
+        // even though only the expanded ones can be assessed.
+        const rows = queryAllUnion(root, SELECTORS.messageContainer);
+        const candidates = rows.filter((element) => isExpanded(element));
 
         const index = selectReadableMessage(
           candidates.map((candidate) => readIdentity(candidate)),
@@ -105,6 +107,7 @@ export class GmailDomAdapter implements MailAdapter {
         return {
           messageId: readMessageId(element),
           threadId: readThreadId(),
+          priorSenders: attempt('priorSenders', () => readPriorSenders(rows, element), []),
           headerElement: findHeaderAnchorPoint(element),
           bodyElement,
           root: element,
@@ -143,6 +146,7 @@ export class GmailDomAdapter implements MailAdapter {
       ...(auth !== undefined ? { auth } : {}),
       ...(handle.messageId !== '' ? { messageId: handle.messageId } : {}),
       ...(handle.threadId !== '' ? { threadId: handle.threadId } : {}),
+      ...(handle.priorSenders.length > 0 ? { thread: { priorSenders: handle.priorSenders } } : {}),
       ...(Object.keys(raw).length > 0 ? { raw } : {}),
     };
   }
@@ -237,6 +241,68 @@ export function accountAddressFromTitle(title: string): string | undefined {
   const candidate = parts[parts.length - 2]?.trim() ?? '';
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(candidate) ? candidate.toLowerCase() : undefined;
 }
+
+/**
+ * Senders of the thread rows that appear before the assessed one.
+ *
+ * Position in the list is the ordering, not a timestamp: Gmail renders a conversation in order, and a
+ * date is a string in the reader's locale that a message can also simply lie about.
+ *
+ * Rows after the assessed message are excluded rather than merely ignored. What the rules ask is
+ * whether the sender was *established* in the conversation, and a party who only appears further down —
+ * where Gmail puts the reader's own later reply, or a message opened out of order — was not.
+ */
+function readPriorSenders(rows: readonly Element[], current: Element): ThreadParticipant[] {
+  const boundary = rows.indexOf(current);
+  const preceding = boundary === -1 ? rows : rows.slice(0, boundary);
+
+  const senders: ThreadParticipant[] = [];
+  for (const row of preceding.slice(-MAX_THREAD_ROWS)) {
+    // A row nested inside the assessed message is not a sibling message: Gmail nests quoted content,
+    // and quoted content is written by whoever sent the message.
+    if (current.contains(row) || row.contains(current)) continue;
+    const participant = readParticipant(row);
+    if (participant !== null) senders.push(participant);
+  }
+
+  // The one extraction failure with no visible symptom. A missing badge or an absent link finding is
+  // noticeable; a thread history that silently came back empty looks exactly like an ordinary thread,
+  // and the rules that need it simply never fire. Worth a line in a dev build.
+  logger.debug('thread history', { rows: rows.length, before: preceding.length, found: senders.length });
+
+  return senders;
+}
+
+/**
+ * The sender named in one thread row's header.
+ *
+ * **Header only.** The row's body is skipped for the same reason `readAudience` skips it: an `email`
+ * attribute is one `<span>` away, so a message that could nominate its own thread participants could
+ * fabricate a history in which the attacker's domain was always present, and switch off the very rules
+ * that read this. Everything here comes from markup Gmail generated, not markup a sender supplied.
+ */
+function readParticipant(row: Element): ThreadParticipant | null {
+  const bodies = queryAllUnion(row, SELECTORS.body);
+
+  for (const node of queryAllUnion(row, SELECTORS.senderSpan)) {
+    if (bodies.some((body) => body === node || body.contains(node))) continue;
+
+    const email = node.getAttribute('email')?.trim().toLowerCase() ?? '';
+    const name = node.getAttribute('name')?.trim() ?? collapseWhitespace(node.textContent);
+    if (email === '' && name === '') continue;
+
+    return {
+      email: truncate(email, 320),
+      // Gmail puts the address in the name slot when there is no display name; that is not a name.
+      name: name === email ? '' : truncate(name, 300),
+    };
+  }
+
+  return null;
+}
+
+/** Upper bound on thread rows read for history. Long threads are common; unbounded work is not. */
+const MAX_THREAD_ROWS = 60;
 
 function readIdentity(element: Element): MessageIdentity {
   return attempt<MessageIdentity>(

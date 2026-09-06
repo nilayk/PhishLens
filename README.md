@@ -113,8 +113,9 @@ Being clear about the limits is part of being trustworthy:
   the received messages.
 - **English wording checks.** The language heuristics are English; a phishing email in another language
   is still caught by the sender, link, and attachment checks, but not by the wording ones.
-- **It knows nothing about the world.** No blocklists, no reputation feeds, no history. Everything comes
-  from the message in front of it, which is what lets it run entirely offline.
+- **It knows nothing about the world.** No blocklists, no reputation feeds, no record of past mail.
+  Everything comes from the message in front of it and the conversation it sits in, both already on your
+  screen, which is what lets it run entirely offline.
 
 ## Documentation
 
