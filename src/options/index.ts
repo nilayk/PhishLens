@@ -15,6 +15,7 @@
  * per-address, on a click, and handed back when the address changes, so a default install keeps the two
  * permissions the README advertises.
  */
+import { logger } from '../shared/logger.js';
 import { sendMessage } from '../shared/messaging.js';
 import {
   DEFAULT_SETTINGS,
@@ -225,7 +226,20 @@ class OptionsPage {
 
     this.#connect.disabled = true;
     try {
-      const granted = await chrome.permissions.request({ origins: [pattern] });
+      // Chrome rejects rather than returns false for a pattern it cannot parse. Ports are fine and
+      // `[::1]` is the doubtful case, so the address is named: without this the button would appear to
+      // do nothing at all, which is the worst way for a permission step to fail.
+      const granted = await chrome.permissions
+        .request({ origins: [pattern] })
+        .catch((error: unknown) => {
+          logger.debug('permission request rejected', error);
+          return null;
+        });
+
+      if (granted === null) {
+        this.#serverError.textContent = `Chrome would not accept ${pattern} as an address to grant access to. Try the hostname form, for example http://127.0.0.1:11434/v1.`;
+        return;
+      }
       if (!granted) {
         this.#serverError.textContent =
           'Access to that address was declined, so PhishLens cannot reach the server.';
