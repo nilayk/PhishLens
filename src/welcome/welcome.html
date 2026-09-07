@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PhishLens is installed</title>
+    <style>
+      /*
+        No script on this page, deliberately. It is shown once, at install, to a person deciding whether
+        to trust the extension with their mail — so everything it claims can be verified by reading the
+        page source, and there is no bundle to go stale. Choices live in the settings page, which is one
+        click away and is where they can be revisited.
+      */
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #1f2328;
+        --muted: #57606a;
+        --line: #d8dee4;
+        --accent: #0b5fd0;
+        --card: #f6f8fa;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #14171a;
+          --fg: #e6edf3;
+          --muted: #9aa4af;
+          --line: #2c333a;
+          --accent: #5ea1ff;
+          --card: #1b1f24;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        padding: 56px 24px 80px;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          15px/1.6 system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+      }
+      main {
+        max-width: 640px;
+        margin: 0 auto;
+      }
+      .brand {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      h1 {
+        margin: 6px 0 8px;
+        font-size: 28px;
+        letter-spacing: -0.02em;
+      }
+      .lede {
+        margin: 0 0 32px;
+        color: var(--muted);
+        font-size: 16px;
+      }
+      h2 {
+        margin: 36px 0 8px;
+        font-size: 16px;
+      }
+      p {
+        margin: 0 0 12px;
+      }
+      ul {
+        margin: 0 0 12px;
+        padding-left: 20px;
+      }
+      li {
+        margin-bottom: 6px;
+      }
+      .badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--card);
+        margin-bottom: 12px;
+      }
+      /* The real badge, in the real palette (src/ui/styles.ts), so it is recognised when it appears. */
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 10px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        font:
+          500 12px/1.4 system-ui,
+          sans-serif;
+      }
+      .badge[data-state="low"] {
+        background: #e6f4ea;
+        color: #137333;
+        border-color: #ceead6;
+      }
+      .badge[data-state="caution"] {
+        background: #fef7e0;
+        color: #8a5300;
+        border-color: #fde293;
+      }
+      .badge[data-state="suspicious"] {
+        background: #fce8e6;
+        color: #b3261e;
+        border-color: #f9d2cf;
+      }
+      .badge[data-state="high-risk"] {
+        background: #b3261e;
+        color: #ffffff;
+        border-color: #8c1d18;
+      }
+      .badge[data-state="unreadable"] {
+        background: transparent;
+        color: #5f6368;
+        border-color: #9aa0a6;
+        border-style: dashed;
+      }
+      @media (prefers-color-scheme: dark) {
+        .badge[data-state="low"] {
+          background: #1e3a28;
+          color: #81c995;
+          border-color: #2d5a3d;
+        }
+        .badge[data-state="caution"] {
+          background: #3d3122;
+          color: #fdd663;
+          border-color: #5c4a2e;
+        }
+        .badge[data-state="suspicious"] {
+          background: #452420;
+          color: #f28b82;
+          border-color: #6b322c;
+        }
+        .badge[data-state="unreadable"] {
+          color: #9aa0a6;
+          border-color: #5f6368;
+        }
+      }
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 28px 0 0;
+      }
+      a.button {
+        display: inline-block;
+        padding: 10px 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--card);
+        color: var(--fg);
+        text-decoration: none;
+        font-weight: 500;
+      }
+      a.button:hover {
+        border-color: var(--accent);
+      }
+      a.button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #ffffff;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      th {
+        color: var(--muted);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px;
+      }
+      footer {
+        margin-top: 40px;
+        padding-top: 16px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="brand">PhishLens</span>
+      <h1>Installed. Nothing else to set up.</h1>
+      <p class="lede">
+        Open Gmail and read your mail as usual. Each message you open is checked as it loads, and a small
+        badge appears beside the sender with what was found.
+      </p>
+
+      <div class="badges">
+        <span class="badge" data-state="low">✓ Low Risk · 4/100</span>
+        <span class="badge" data-state="caution">! Caution · 31/100</span>
+        <span class="badge" data-state="suspicious">⚠ Suspicious · 58/100</span>
+        <span class="badge" data-state="high-risk">⛔ High Risk · 82/100</span>
+        <span class="badge" data-state="unreadable">? Not checked</span>
+      </div>
+      <p>
+        Click any badge to see the score broken down finding by finding, each with the evidence it came
+        from. Every point is explained; nothing is a black box.
+      </p>
+      <p>
+        The dashed <strong>Not checked</strong> badge is the important one. It means PhishLens could not
+        read part of the message — usually because Gmail changed its page structure — so it produced no
+        score at all rather than a reassuring one it had not earned.
+      </p>
+
+      <h2>What it does with your mail</h2>
+      <ul>
+        <li>
+          Reads the message you have open, checks it, and discards it. Nothing is written to storage and
+          no message is ever sent anywhere by default.
+        </li>
+        <li>
+          Never opens links, loads images, downloads attachments, or looks up a domain. Every check is
+          textual.
+        </li>
+        <li>
+          Never blocks, deletes, or replies. It is advisory: it tells you what it noticed and leaves the
+          decision to you.
+        </li>
+      </ul>
+
+      <h2>Two permissions, and why</h2>
+      <table>
+        <tbody>
+          <tr>
+            <th scope="row"><code>mail.google.com</code></th>
+            <td>Read the open message in order to check it. This is the only site it runs on.</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>storage</code></th>
+            <td>Remember your settings. No message content is stored.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2>The optional AI layer</h2>
+      <p>
+        The technical checks — sender domains, links, attachments, wording — always run on this device
+        and need no AI. On top of them, PhishLens can ask a language model what it makes of the
+        message's intent. By default that is Chrome's built-in on-device model, if your browser has one;
+        if it does not, everything else still works and the panel says so.
+      </p>
+      <p>
+        A model can never outvote the checks. It contributes at most 15 of the 100 points, cannot remove
+        a finding, and scores nothing at all unless a technical check already found something.
+      </p>
+
+      <div class="actions">
+        <a class="button primary" href="https://mail.google.com/">Open Gmail</a>
+        <a class="button" href="options.html">Settings</a>
+      </div>
+
+      <footer>
+        PhishLens is an advisory tool and will miss things. Treat it as a second opinion, never as
+        permission to trust a message.
+      </footer>
+    </main>
+  </body>
+</html>

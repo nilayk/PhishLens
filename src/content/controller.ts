@@ -21,7 +21,7 @@ import { isScorable, type MailAdapter, type MessageHandle } from '../gmail/adapt
 import { buildDiagnostic } from '../gmail/diagnostics.js';
 import { GmailObserver, type ObserverEvent } from '../gmail/observer.js';
 import { logger } from '../shared/logger.js';
-import { sendMessage } from '../shared/messaging.js';
+import { isTabRequest, sendMessage, type TabResponse, type TabStatus } from '../shared/messaging.js';
 import { DEFAULT_SETTINGS } from '../shared/settings.js';
 import type {
   AiMode,
@@ -44,6 +44,9 @@ import { Panel, type PanelView, type UnreadableView } from '../ui/panel.js';
  * avoiding repeat inference within a browsing session.
  */
 const MAX_CACHED_RESULTS = 20;
+
+/** Findings named in the popup. Enough to recognise the verdict; the card is where the reasoning is. */
+const POPUP_HEADLINES = 3;
 
 interface ActiveView {
   signature: string;
@@ -108,6 +111,7 @@ export class Controller {
     logger.info('starting', { aiMode: this.#settings.aiMode, adapter: this.#adapter.id });
 
     chrome.storage.onChanged.addListener(this.#handleStorageChanged);
+    chrome.runtime.onMessage.addListener(this.#handleTabRequest);
     this.#observer.start();
     this.#warmModel();
   }
@@ -117,6 +121,7 @@ export class Controller {
     this.#refinement = null;
     this.#observer.stop();
     chrome.storage.onChanged.removeListener(this.#handleStorageChanged);
+    chrome.runtime.onMessage.removeListener(this.#handleTabRequest);
     this.#panel.close();
     this.#badge.remove();
     this.#highlighter.dispose();
@@ -280,20 +285,79 @@ export class Controller {
   }
 
   // -------------------------------------------------------------------------
+  // The popup
+  // -------------------------------------------------------------------------
+
+  /**
+   * Answers the toolbar popup.
+   *
+   * Synchronous, and returns `false` so the channel closes immediately: every answer is read from state
+   * this object already holds, and keeping the port open for an await would let a popup that closes
+   * mid-question leave a dangling response callback.
+   *
+   * The listener is registered here rather than in `content/index.ts` because the answers are this
+   * object's state, and a listener outliving the controller would answer for a torn-down view.
+   */
+  readonly #handleTabRequest = (
+    message: unknown,
+    sender: chrome.runtime.MessageSender,
+    respond: (response: TabResponse) => void,
+  ): boolean => {
+    // `sender.id` is set by Chrome. A page cannot forge it, so this rejects anything that did not
+    // originate in this extension — the popup being the only thing that ever does.
+    if (sender.id !== chrome.runtime.id || !isTabRequest(message)) return false;
+
+    if (message.type === 'OPEN_PANEL') {
+      this.#revealPanel();
+      respond({ ok: true, type: 'ACKNOWLEDGED' });
+      return false;
+    }
+
+    respond({ ok: true, type: 'TAB_STATUS', status: this.#status() });
+    return false;
+  };
+
+  #status(): TabStatus {
+    const active = this.#active;
+    if (active === null) return { kind: 'no-message' };
+    if (!isScorable(active.missing)) return { kind: 'unreadable', missing: [...active.missing] };
+
+    const result = active.result;
+    if (result === null) return { kind: 'pending' };
+
+    return {
+      kind: 'scored',
+      score: result.score,
+      classification: result.classification,
+      findings: result.signals.length,
+      // Already ordered as the card orders them, so these are the findings a reader would see first.
+      headlines: result.signals.slice(0, POPUP_HEADLINES).map((signal) => signal.title),
+      semantic: active.semantic,
+    };
+  }
+
+  // -------------------------------------------------------------------------
   // UI
   // -------------------------------------------------------------------------
 
   #togglePanel(): void {
+    const view = this.#currentView();
+    if (view !== null) this.#panel.toggle(view);
+  }
+
+  /** Opens the card rather than toggling it: the popup's button must not close what it describes. */
+  #revealPanel(): void {
+    const view = this.#currentView();
+    if (view !== null) this.#panel.open(view);
+  }
+
+  /** What the card would show for the message in view, or `null` while there is nothing to show. */
+  #currentView(): PanelView | null {
     const active = this.#active;
-    if (active === null) return;
-
-    if (!isScorable(active.missing)) {
-      this.#panel.toggle(this.#unreadableView(active));
-      return;
-    }
-
-    if (active.result === null) return;
-    this.#panel.toggle(viewOf(active, active.result, this.#settings.aiMode));
+    if (active === null) return null;
+    if (!isScorable(active.missing)) return this.#unreadableView(active);
+    if (active.result === null) return null;
+    return viewOf(active, active.result, this.#settings.aiMode);
   }
 
   /**

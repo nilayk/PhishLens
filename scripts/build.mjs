@@ -57,14 +57,25 @@ const targets = [
     outdir,
     format: 'esm',
   },
+  {
+    ...common,
+    entryPoints: { popup: path.join(root, 'src/popup/index.ts') },
+    outdir,
+    format: 'esm',
+  },
 ];
+
+/** Pages that ship as authored HTML. The welcome page has no script at all; see the file. */
+const pages = ['src/options/options.html', 'src/popup/popup.html', 'src/welcome/welcome.html'];
 
 async function copyStatic() {
   const manifest = JSON.parse(await readFile(path.join(root, 'src/manifest.json'), 'utf8'));
   manifest.version = pkg.version;
   manifest.description = pkg.description;
   await writeFile(path.join(outdir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
-  await cp(path.join(root, 'src/options/options.html'), path.join(outdir, 'options.html'));
+  for (const page of pages) {
+    await cp(path.join(root, page), path.join(outdir, path.basename(page)));
+  }
 
   const icons = path.join(root, 'assets/icons');
   if (await exists(icons)) {

@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PhishLens</title>
+    <style>
+      /*
+        The chip palette is copied from the in-page badge (src/ui/styles.ts) rather than derived, because
+        the two are seen seconds apart and a reader compares them: "Suspicious" here and "Suspicious"
+        beside the sender must be the same colour or one of them looks like a different verdict.
+      */
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #202124;
+        --muted: #5f6368;
+        --faint: #80868b;
+        --line: #e8eaed;
+        --accent: #1a73e8;
+        --card: #f8f9fa;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #202124;
+          --fg: #e8eaed;
+          --muted: #9aa0a6;
+          --faint: #80868b;
+          --line: #3c4043;
+          --accent: #8ab4f8;
+          --card: #292a2d;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      [hidden] {
+        display: none !important;
+      }
+      body {
+        width: 320px;
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          13px/1.5 system-ui,
+          -apple-system,
+          "Segoe UI",
+          Roboto,
+          sans-serif;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        font-size: 10px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--faint);
+      }
+      section {
+        padding: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border: 1px solid transparent;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .chip[data-tone="low"] {
+        background: #e6f4ea;
+        color: #137333;
+        border-color: #ceead6;
+      }
+      .chip[data-tone="caution"] {
+        background: #fef7e0;
+        color: #8a5300;
+        border-color: #fde293;
+      }
+      .chip[data-tone="suspicious"] {
+        background: #fce8e6;
+        color: #b3261e;
+        border-color: #f9d2cf;
+      }
+      .chip[data-tone="high-risk"] {
+        background: #b3261e;
+        color: #ffffff;
+        border-color: #8c1d18;
+      }
+      .chip[data-tone="unknown"] {
+        background: transparent;
+        color: var(--muted);
+        border-color: #9aa0a6;
+        border-style: dashed;
+      }
+      .chip[data-tone="idle"] {
+        background: var(--card);
+        color: var(--muted);
+        border-color: var(--line);
+      }
+      @media (prefers-color-scheme: dark) {
+        .chip[data-tone="low"] {
+          background: #1e3a28;
+          color: #81c995;
+          border-color: #2d5a3d;
+        }
+        .chip[data-tone="caution"] {
+          background: #3d3122;
+          color: #fdd663;
+          border-color: #5c4a2e;
+        }
+        .chip[data-tone="suspicious"] {
+          background: #452420;
+          color: #f28b82;
+          border-color: #6b322c;
+        }
+        .chip[data-tone="high-risk"] {
+          background: #b3261e;
+          color: #ffffff;
+          border-color: #d93025;
+        }
+      }
+      .score {
+        font-variant-numeric: tabular-nums;
+        opacity: 0.85;
+      }
+      .note {
+        margin: 10px 0 0;
+        color: var(--muted);
+      }
+      ul.findings {
+        margin: 10px 0 0;
+        padding: 0;
+        list-style: none;
+      }
+      ul.findings li {
+        position: relative;
+        padding-left: 12px;
+        margin-top: 4px;
+        color: var(--fg);
+      }
+      ul.findings li::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 8px;
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: var(--faint);
+      }
+      .more {
+        margin: 6px 0 0;
+        color: var(--faint);
+        font-size: 12px;
+      }
+      button {
+        padding: 7px 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--card);
+        color: var(--fg);
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) {
+        border-color: var(--accent);
+      }
+      button:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 1px;
+      }
+      button:disabled {
+        opacity: 0.55;
+        cursor: default;
+      }
+      button.primary {
+        width: 100%;
+        margin-top: 12px;
+      }
+      button.link {
+        padding: 0;
+        border: 0;
+        background: none;
+        color: var(--accent);
+        font-size: 12px;
+      }
+      /*
+        Stacked rather than a label/value row. At 320px the longer statuses — "Returned nothing usable
+        for this message" — wrap, and a wrapped right-aligned value beside a wrapped left-aligned label
+        reads as two broken columns.
+      */
+      .ai-row {
+        display: flex;
+        flex-direction: column;
+      }
+      .ai-label {
+        font-weight: 500;
+      }
+      .ai-detail {
+        color: var(--muted);
+      }
+      .fix {
+        margin: 8px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .test-result {
+        margin: 8px 0 0;
+        font-size: 12px;
+      }
+      label.toggle {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        cursor: pointer;
+      }
+      label.toggle + label.toggle {
+        margin-top: 10px;
+      }
+      label.toggle input {
+        margin: 2px 0 0;
+        accent-color: var(--accent);
+      }
+      footer {
+        display: flex;
+        justify-content: space-between;
+        padding: 10px 14px;
+        color: var(--faint);
+        font-size: 11px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="brand">PhishLens</span>
+      <button type="button" class="link" id="settings">Settings</button>
+    </header>
+
+    <section>
+      <span class="chip" id="chip" data-tone="idle">
+        <span id="glyph" aria-hidden="true" hidden></span>
+        <span id="label"></span>
+        <span class="score" id="score" hidden></span>
+      </span>
+      <p class="note" id="note"></p>
+      <ul class="findings" id="findings"></ul>
+      <p class="more" id="more" hidden></p>
+      <button type="button" class="primary" id="openCard" hidden></button>
+    </section>
+
+    <section>
+      <div class="ai-row">
+        <span class="ai-label" id="aiLabel"></span>
+        <span class="ai-detail" id="aiDetail"></span>
+      </div>
+      <p class="fix" id="aiFix" hidden></p>
+      <button type="button" class="primary" id="test" hidden>Test connection</button>
+      <p class="test-result" id="testResult" role="status" hidden></p>
+    </section>
+
+    <section>
+      <label class="toggle">
+        <input type="checkbox" id="showBadgeWhenLow" />
+        <span>Show the badge on low-risk mail</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="highlightEnabled" />
+        <span>Highlight the matching item in the message</span>
+      </label>
+    </section>
+
+    <footer>
+      <span id="version"></span>
+      <span>Advisory only</span>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

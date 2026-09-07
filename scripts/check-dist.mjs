@@ -10,7 +10,7 @@
  * someone remembered to add to it, which means the guard stops covering the manifest the moment the
  * manifest grows a new reference — exactly when it would start being useful.
  */
-import { readFile, access } from 'node:fs/promises';
+import { readFile, access, readdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -92,17 +92,26 @@ for (const { file, field } of referenced) {
   }
 }
 
-// options.html is copied verbatim rather than bundled, so a renamed output would leave a dead <script>
-// that fails silently at runtime with the page rendering as bare HTML.
-const optionsPage = manifest.options_ui?.page ?? manifest.options_page;
-if (typeof optionsPage === 'string' && (await exists(path.join(dist, optionsPage)))) {
-  const html = await readFile(path.join(dist, optionsPage), 'utf8');
+/*
+ * Pages are copied verbatim rather than bundled, so a renamed output leaves a dead <script> that fails
+ * silently at runtime with the page rendering as bare HTML.
+ *
+ * Every HTML file in dist/ is checked, not only the ones the manifest names: the welcome page is opened
+ * with `chrome.tabs.create` and so is referenced by nothing the manifest can be read for, which makes it
+ * exactly the page whose script reference would rot unnoticed.
+ */
+for (const page of (await readdir(dist)).filter((f) => f.endsWith('.html'))) {
+  const html = await readFile(path.join(dist, page), 'utf8');
   for (const [, src] of html.matchAll(/<script[^>]+src=["']([^"']+)["']/g)) {
     if (/^[a-z]+:|^\/\//i.test(src)) {
-      fail(`${optionsPage} loads a remote script (${src}), which the CSP forbids`);
+      fail(`${page} loads a remote script (${src}), which the CSP forbids`);
     } else if (!(await exists(path.join(dist, src.replace(/^\.?\//, ''))))) {
-      fail(`${optionsPage} loads ${src}, which is not in dist/`);
+      fail(`${page} loads ${src}, which is not in dist/`);
     }
+  }
+  // An inline <script> would be blocked by the extension CSP, silently, at runtime.
+  if (/<script(?![^>]*\ssrc=)[^>]*>[\s\S]*?\S[\s\S]*?<\/script>/i.test(html)) {
+    fail(`${page} contains an inline <script>, which the CSP forbids`);
   }
 }
 

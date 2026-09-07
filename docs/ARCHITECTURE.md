@@ -634,6 +634,27 @@ region so the transition out of it is announced without interrupting a screen-re
 footnote about a refinement, not a loading screen — the deterministic verdict is already on screen and
 is already complete.
 
+### 5.3 Surfaces outside the open message
+
+Two places show something apart from a message being open. Each raises the same question — what can this
+surface honestly say with the evidence it has.
+
+**The toolbar popup** (`src/popup/`) answers "is this thing working". Before it existed, every failure mode
+looked identical from the outside: no AI because the browser has no model, no AI because the model server
+is unreachable, no badge because Gmail's markup moved, no badge because the message is one the user sent.
+The popup asks the content script for the tab's current status and says which.
+
+Its presentation logic is a separate pure module (`present.ts`) tested in Node, for the same reason the rest
+of the wording is: the strings are the product here, and a string chosen inside a DOM callback can only be
+checked by driving a browser.
+
+**The welcome page** (`src/welcome/`) exists because an unpacked extension gives no other opportunity to
+explain itself. There is no store listing, and the interesting properties — that nothing is uploaded, that
+the badge appears next to the sender, that AI is optional — are exactly the ones a user cannot discover by
+looking. It opens once, on install, and asks for nothing. It ships as authored HTML with no script at all,
+which is why `check-dist.mjs` scans every page in `dist/` rather than only the ones the manifest names:
+nothing the manifest can be read for references it.
+
 ---
 
 ## 6. A model server the user runs

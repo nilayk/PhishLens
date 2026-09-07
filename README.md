@@ -38,6 +38,11 @@ Two things about that card are deliberate. Findings are worded to be *checkable*
 is `rnicrosoft-online.com`, which is not a domain Microsoft owns" is something you can verify — and the
 score's arithmetic is shown at the bottom, so a number you disagree with is a number you can take apart.
 
+### The toolbar button
+
+Clicking PhishLens in the Chrome toolbar tells you what it is doing right now: the verdict for the tab
+you are on, whether the AI part is working, and a link to fix it if not.
+
 ## How it works
 
 Most of what makes a phishing email detectable is not a matter of opinion. Whether the link that says
@@ -73,11 +78,12 @@ PhishLens is not on the Chrome Web Store, so you install it yourself. It takes a
 2. Open `chrome://extensions` in Chrome.
 3. Turn on **Developer mode** (top right).
 4. Click **Load unpacked** and choose the unzipped folder.
-5. Open Gmail, open any message you received, and look to the right of the sender's address.
+5. A welcome page opens explaining what happens next. Then open Gmail, open any message you received,
+   and look to the right of the sender's address.
 
 That is it. There is nothing to sign up for and no settings you have to change.
 
-To change the AI mode or the display options, go to `chrome://extensions` → PhishLens → **Details** →
+Settings live behind the toolbar button, or at `chrome://extensions` → PhishLens → **Details** →
 **Extension options**. Building from source instead takes two commands and is covered in
 [the development guide](docs/DEVELOPMENT.md).
 

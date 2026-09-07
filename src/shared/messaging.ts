@@ -5,7 +5,13 @@
  * complete, self-contained request; nothing here depends on a previous message having been handled
  * by the same worker instance.
  */
-import type { SemanticAnalysis, Settings } from './types.js';
+import type {
+  Classification,
+  MessagePart,
+  SemanticAnalysis,
+  SemanticStatus,
+  Settings,
+} from './types.js';
 
 export interface GetSettingsRequest {
   type: 'GET_SETTINGS';
@@ -83,6 +89,86 @@ export function isExtensionRequest(value: unknown): value is ExtensionRequest {
   if (value === null || typeof value !== 'object') return false;
   const type = (value as Record<string, unknown>)['type'];
   return typeof type === 'string' && REQUEST_TYPES.has(type);
+}
+
+// ---------------------------------------------------------------------------
+// The popup ↔ content-script channel
+// ---------------------------------------------------------------------------
+
+/**
+ * What the toolbar popup can ask the tab about the message on screen.
+ *
+ * A separate union from `ExtensionRequest` because it travels a different route — `chrome.tabs.
+ * sendMessage`, which reaches only content scripts — and is answered by different code. Merging them
+ * would put requests the worker cannot handle into the worker's exhaustive switch, and requests the
+ * content script cannot handle into its own.
+ *
+ * Deliberately read-only apart from `OPEN_PANEL`, which asks the tab to show the card it would have
+ * shown had the badge been clicked. Nothing here can start an analysis or change a score: a popup that
+ * could would be a second, differently-behaved entry point into the same state.
+ */
+export interface GetTabStatusRequest {
+  type: 'GET_TAB_STATUS';
+}
+
+export interface OpenPanelRequest {
+  type: 'OPEN_PANEL';
+}
+
+export type TabRequest = GetTabStatusRequest | OpenPanelRequest;
+
+/**
+ * The state of the tab, as much of it as the popup needs.
+ *
+ * `headlines` carries finding *titles* — the extension's own wording, not message content — so the
+ * popup can say what was found without re-deriving anything. The sender and subject are deliberately
+ * absent: the popup is about whether PhishLens is working, and copying mail into a second surface buys
+ * nothing when the card beside the message already names it.
+ */
+export type TabStatus =
+  | { kind: 'no-message' }
+  /** Extraction succeeded and the deterministic pass has not been applied yet. Momentary. */
+  | { kind: 'pending' }
+  | { kind: 'unreadable'; missing: MessagePart[] }
+  | {
+      kind: 'scored';
+      score: number;
+      classification: Classification;
+      findings: number;
+      headlines: string[];
+      semantic: SemanticStatus;
+    };
+
+export type TabResponse =
+  | { ok: true; type: 'TAB_STATUS'; status: TabStatus }
+  | { ok: true; type: 'ACKNOWLEDGED' }
+  | { ok: false; error: string };
+
+const TAB_REQUEST_TYPES: ReadonlySet<string> = new Set(['GET_TAB_STATUS', 'OPEN_PANEL']);
+
+export function isTabRequest(value: unknown): value is TabRequest {
+  if (value === null || typeof value !== 'object') return false;
+  const type = (value as Record<string, unknown>)['type'];
+  return typeof type === 'string' && TAB_REQUEST_TYPES.has(type);
+}
+
+/**
+ * Asks one tab. Resolves to `null` for every reason a tab may not answer — no content script on the
+ * page, a tab that has navigated away, a page still loading — because to the popup these are one case:
+ * there is nothing to report about this tab.
+ */
+export async function sendTabMessage(
+  tabId: number,
+  request: TabRequest,
+): Promise<TabResponse | null> {
+  try {
+    const response: unknown = await chrome.tabs.sendMessage(tabId, request);
+    if (response === null || typeof response !== 'object') return null;
+    if (typeof (response as Record<string, unknown>)['ok'] !== 'boolean') return null;
+    return response as TabResponse;
+  } catch {
+    return null;
+  }
 }
 
 /**

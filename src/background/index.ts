@@ -319,5 +319,21 @@ chrome.runtime.onInstalled.addListener((details) => {
     const settings = await readSettings();
     await chrome.storage.sync.set({ [STORAGE_KEY]: settings });
     logger.info('installed', { reason: details.reason, aiMode: settings.aiMode });
+
+    /*
+     * A first install is the one moment the extension has something to say: it works only on Gmail, in a
+     * tab the user has probably not opened yet, so without this the install completes and nothing
+     * whatsoever appears to happen.
+     *
+     * Only on `install`. Opening a tab on every `update` is the behaviour that gets extensions
+     * uninstalled, and Chrome updates them without being asked.
+     */
+    if (details.reason !== 'install') return;
+    try {
+      await chrome.tabs.create({ url: chrome.runtime.getURL('welcome.html') });
+    } catch (error) {
+      // Not worth failing the install over. The settings page links to the same page.
+      logger.debug('could not open the welcome page', error);
+    }
   })();
 });

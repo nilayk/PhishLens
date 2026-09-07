@@ -45,13 +45,16 @@ silently between builds is one nobody can review. Refreshing it is a visible dif
 ```text
 src/
   content/      orchestration: observe → extract → analyse → render. All state lives here.
-  background/   service worker: settings, future cloud egress. Deliberately stateless.
+  background/   service worker: settings, model-server egress. Deliberately stateless.
   gmail/        DOM adapter + SPA observer. The only place that knows Gmail's markup.
   analysis/
     rules/      deterministic detectors: identity, link, attachment, content, authentication
     scoring/    weights, ceilings, thresholds, and the pure aggregation function
     llm/        semantic layer: prompt, strict output parsing, on-device + cloud adapters
   ui/           badge, panel, highlighting. No framework; Shadow DOM; textContent only.
+  popup/        the toolbar popup: verdict for the tab and AI status
+  options/      settings page
+  welcome/      the page shown once on install
   shared/       types, URL/Unicode/brand primitives, settings, logging
 harness/        development-only UI harness. Not shipped.
 ```
@@ -112,7 +115,7 @@ UI change is one command away from being reflected in the README instead of sile
 
 ## Testing
 
-773 tests, all in plain Node — no Chrome, no Gmail, no network.
+803 tests, all in plain Node — no Chrome, no Gmail, no network.
 
 | File | Covers |
 | --- | --- |
@@ -126,6 +129,8 @@ UI change is one command away from being reflected in the README instead of sile
 | `test/observer.test.ts` | The SPA observer's emit and suppress decisions in both directions, since every negative decision it makes is silent by design. |
 | `test/hidden-text.test.ts` | Which inline styles count as hiding, and — mostly — which do not: this is the one scan whose output is *removed* from the body before scoring, so an over-eager rule deletes the evidence rather than finding it. |
 | `test/extraction.test.ts` | The extraction-gap rule, starting by demonstrating the danger: a thread hijack scored with its sender removed comes back **Low Risk**, because a reply-chain attack is detectable only from identity. Also that the card's wording never reassures, and that the diagnostic carries nothing from the message. |
+| `test/model-protocol.test.ts` | The OpenAI-compatible request and response shapes, and the URL policy the worker enforces before any of it is sent. |
+| `test/popup.test.ts` | The popup's wording for every state, and in particular that "nothing was found" and "nothing was checked" never share a phrasing. |
 
 Fixture philosophy and the both-directions assertion are described in
 [DETECTION.md](DETECTION.md#confidence-in-the-numbers).
