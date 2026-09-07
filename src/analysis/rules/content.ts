@@ -662,8 +662,15 @@ function hasOpaqueCode(subject: string): boolean {
  * reader already deals with does not open by insisting it is trustworthy.
  *
  * Anchored on the sender asserting *safety about this message*, not on the word "trusted" or "verified"
- * appearing. "You can trust us with your data" and "verified by our security team" are marketing;
- * "this email has been scanned and is safe" is a forged verdict.
+ * appearing. "You can trust us with your data" and "verified by our security team" are marketing.
+ *
+ * Virus-scanning and secure-delivery language is deliberately **not** matched, though it is the same kind
+ * of sentence, because in practice it is written by legitimate senders far more often than by attackers.
+ * Mail gateways append "this message has been scanned for viruses" to ordinary business mail on the way
+ * out, and banks and clinics send "this is a secure message from …" from real portals. Both are useless to
+ * a reader for the same reason the forged notice is — a claim inside the message about the message — but
+ * the population carrying them is overwhelmingly honest, and a finding that fires on ordinary business
+ * correspondence costs more than the phish it occasionally catches.
  */
 function forgedTrustAssurance(context: AnalysisContext): SecuritySignal[] {
   const hit = firstMatch(context.matchText, FORGED_ASSURANCE);
@@ -684,7 +691,7 @@ function forgedTrustAssurance(context: AnalysisContext): SecuritySignal[] {
 }
 
 const FORGED_ASSURANCE =
-  /\b(this (e-?mail|message|sender) (was|has been|is)\b[^.!?]{0,30}\b(sent from a )?(trusted|verified|authenticated|safe|secure|scanned|checked)|(sent|comes) from a (trusted|verified|known|safe) (sender|source|domain)|(verified|trusted|authenticated) (sender|by (gmail|google|outlook|microsoft|your (mail|email) provider))|(scanned|checked) (for|by)\b[^.!?]{0,30}\b(virus|malware|threat)es?\b[^.!?]{0,20}\b(none|clean|safe|no threats?) found|no (virus|malware|threats?) (were |was )?(found|detected)|(this|the) (message|e-?mail) is (safe|legitimate|genuine|not (spam|phishing)))\b/u;
+  /\b((sent|came|comes|coming) from a (trusted|verified|known|safe) (sender|source|domain)|(verified|trusted) sender\b|(this|the) (e-?mail|message) (was |has been |is )(verified|authenticated) (as (safe|legitimate|genuine)|by (gmail|google|outlook|microsoft|your (mail|e-?mail) provider))|(this|the) (e-?mail|message) is (safe|legitimate|genuine|not (spam|phishing|a phishing (e-?mail|message))))\b/u;
 
 /**
  * The body carries a quantity of text that CSS keeps off screen.

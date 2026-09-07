@@ -69,9 +69,15 @@ export class ModelServerAnalyzer implements SemanticAnalyzer {
     });
     if (isAborted(options.signal)) return null;
 
+    /*
+     * Thrown rather than returned as "no answer", because the two mean different things to the reader.
+     * `null` here becomes the `no-output` status, whose card says the model did not return a usable
+     * assessment — true when a model was asked and answered badly, and misleading when a server refused,
+     * timed out or was never reached, since it sends someone looking at their model instead of their
+     * configuration. A rejection becomes `error` instead, and carries the worker's explanation with it.
+     */
     if (response?.ok !== true) {
-      logger.debug('model server analysis failed', response === null ? 'no response' : response.error);
-      return null;
+      throw new Error(response === null ? 'no response from the service worker' : response.error);
     }
     if (response.type !== 'SEMANTIC') return null;
     return response.analysis;

@@ -183,7 +183,15 @@ base URL exactly as your runner documents it; `/chat/completions` is appended.
 | llama.cpp / vLLM / LocalAI | as configured | Anything OpenAI-compatible works |
 
 **Ollama refuses browser-origin requests by default,** and this is the first thing that goes wrong for
-everybody. Set `OLLAMA_ORIGINS` to include the extension before starting it:
+everybody. It looks like this, and nothing about the address, the port or the permission grant is wrong:
+
+```text
+[PhishLens] model server refused the request (403): it is not configured to
+accept requests from browser extensions.
+```
+
+Chrome attaches `Origin: chrome-extension://<id>` to every request the service worker makes and the header
+cannot be suppressed, so the server has to be told to expect it. Set `OLLAMA_ORIGINS` before starting it:
 
 ```bash
 # macOS / Linux

@@ -203,7 +203,7 @@ async function postCompletion(
 
     if (!response.ok) {
       return {
-        response: { ok: false, error: `model server returned ${String(response.status)}` },
+        response: { ok: false, error: describeHttpFailure(response.status) },
         retryable: response.status === 400 || response.status === 422,
       };
     }
@@ -234,6 +234,26 @@ async function postCompletion(
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * An HTTP failure from a model server, worded so the reader can do something about it.
+ *
+ * 403 earns its own sentence because it is the first thing almost everyone pointing this at Ollama sees,
+ * and because the cause is invisible from here: Chrome attaches `Origin: chrome-extension://<id>` to every
+ * request the worker makes, and Ollama's CORS layer refuses any origin it was not told to expect. Nothing
+ * in the extension can work around that — the header cannot be suppressed, and the address, the port and
+ * the permission grant are all correct — so the only useful thing to report is which setting the server
+ * needs. Saying "returned 403" instead sends the reader looking for a fault that is not there.
+ */
+function describeHttpFailure(status: number): string {
+  if (status === 401 || status === 403) {
+    return `model server refused the request (${String(status)}): it is not configured to accept requests from browser extensions. Ollama needs OLLAMA_ORIGINS to include chrome-extension://* before it starts; LM Studio and others have an equivalent CORS setting.`;
+  }
+  if (status === 404) {
+    return 'model server returned 404: there is no OpenAI-compatible API at that address. Ollama serves one under /v1.';
+  }
+  return `model server returned ${String(status)}`;
 }
 
 /** Pulls the assistant text out of a chat-completions envelope without trusting its shape. */
@@ -270,7 +290,7 @@ async function listModels(): Promise<ExtensionResponse> {
       referrerPolicy: 'no-referrer',
       redirect: 'error',
     });
-    if (!response.ok) return { ok: false, error: `server returned ${String(response.status)}` };
+    if (!response.ok) return { ok: false, error: describeHttpFailure(response.status) };
 
     const body: unknown = await response.json();
     const data = (body as { data?: unknown }).data;
@@ -283,7 +303,11 @@ async function listModels(): Promise<ExtensionResponse> {
     return { ok: true, type: 'MODELS', models };
   } catch (error) {
     logger.debug('model list request failed', error);
-    return { ok: false, error: 'could not reach the model server' };
+    return {
+      ok: false,
+      error:
+        'could not reach the model server: it may not be running, the address may be wrong, or it may be refusing requests from browser extensions (for Ollama, OLLAMA_ORIGINS must include chrome-extension://*)',
+    };
   } finally {
     clearTimeout(timer);
   }

@@ -78,6 +78,14 @@ bulk sender hides, so ordinary marketing does not reach it.
 **Authentication** (`authentication.ts`) — SPF, DKIM and DMARC results, and Gmail's own warning banner,
 as far as Gmail exposes them in the page. There is no access to raw headers.
 
+Gmail's `via` annotation is reported here but **scores nothing**, because it appears whenever the
+authenticated sending domain differs from the From domain — the ordinary consequence of sending through a
+notification platform, a helpdesk or a mailing list, and true of a large share of legitimate commercial
+mail. A signal equally present in the honest and the dishonest population is not evidence, and telling a
+disreputable relay from a small legitimate one would need reputation data this project does not have. It
+scores in one configuration only: when the message claims to be a brand and the relay is not one that
+brand's own domains, where it contradicts a specific claim rather than merely existing.
+
 Every detector emits `SecuritySignal`s carrying an id, a category, a severity, a human explanation, and
 where applicable the evidence and a locator the UI can highlight. A detector never computes a score.
 

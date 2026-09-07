@@ -92,7 +92,29 @@ function signingDomainMismatch(context: AnalysisContext): SecuritySignal[] {
   ];
 }
 
-/** Gmail's `via` annotation, shown when the sending host is not the From domain. */
+/**
+ * Gmail's `via` annotation, shown when the sending host is not the From domain.
+ *
+ * **Scores nothing on its own, and that is the finding's whole design.** Gmail prints `via` whenever the
+ * authenticated sending domain differs from the From domain, which is the ordinary consequence of using
+ * any third-party sending service — a transactional mail vendor, a helpdesk, a mailing list, a payroll
+ * system. A large share of legitimate commercial mail carries one. Charging even a few points for it
+ * raises the score of most real mail in an inbox, and a signal present on both the honest and the
+ * dishonest population is not evidence, however suspicious the host looks to a reader.
+ *
+ * Distinguishing a disreputable relay from a small legitimate one would need reputation data, which this
+ * project does not have and will not fetch. So the plain case is reported at `info`: the panel can tell a
+ * curious reader where the message actually came from, and the number does not move.
+ *
+ * It scores in exactly one configuration — the message claims to be a brand, and the relay is not one of
+ * that brand's own domains — because there the relay contradicts a specific claim rather than merely
+ * existing. Recognised bulk-mail platforms are dropped entirely in the non-claim case; naming the ESP of
+ * every newsletter is noise even at zero.
+ *
+ * The rule was written long before it ever ran: `readVia` looked for the annotation inside the sender
+ * element, which holds the display name and nothing else. Fixing the extraction is what revealed that the
+ * weighting had never been tested against real mail.
+ */
 function sentViaUnrelatedHost(context: AnalysisContext): SecuritySignal[] {
   const via = normalizeDomain(context.email.auth?.via ?? '');
   if (via === '' || context.senderDomain === '') return [];
@@ -103,19 +125,20 @@ function sentViaUnrelatedHost(context: AnalysisContext): SecuritySignal[] {
   const brandClaimedButSentElsewhere =
     claimsBrand && !(context.primaryClaim?.brand.domains.includes(viaRegistrable) ?? false);
 
-  // Almost all commercial mail is relayed through an ESP. When the relay is a recognised bulk-mail
-  // platform and the message is not claiming to be a brand that would not use one, this is the
-  // expected state of the world and reporting it is noise.
   if (!brandClaimedButSentElsewhere && isKnownTrackingRedirector(via)) return [];
 
   return [
     signal({
       id: 'authentication.via_unrelated_host',
       category: 'authentication',
-      severity: brandClaimedButSentElsewhere ? 'medium' : 'low',
-      score: brandClaimedButSentElsewhere ? 18 : 8,
-      title: 'Message was relayed through an unrelated service',
-      description: `Gmail shows this message as sent via ${viaRegistrable} rather than directly from ${context.senderRegistrable}. Bulk-mail services legitimately appear here${brandClaimedButSentElsewhere ? `, but the message presents itself as ${context.primaryClaim?.brand.label ?? ''}, which does not use this sender` : ''}.`,
+      severity: brandClaimedButSentElsewhere ? 'medium' : 'info',
+      score: brandClaimedButSentElsewhere ? 18 : 0,
+      title: brandClaimedButSentElsewhere
+        ? 'Message was relayed through a service the sender does not use'
+        : 'Message was relayed through another service',
+      description: brandClaimedButSentElsewhere
+        ? `Gmail shows this message as sent via ${viaRegistrable} rather than directly from ${context.senderRegistrable}. The message presents itself as ${context.primaryClaim?.brand.label ?? ''}, which does not send mail through ${viaRegistrable}.`
+        : `Gmail shows this message as sent via ${viaRegistrable} rather than directly from ${context.senderRegistrable}. This is how mail sent through a third-party service normally appears — a notification platform, a helpdesk, a mailing list — so it is shown for context and does not affect the score.`,
       evidence: { value: viaRegistrable },
     }),
   ];

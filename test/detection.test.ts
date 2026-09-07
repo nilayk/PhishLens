@@ -1157,19 +1157,20 @@ describe('phishing that is innocent one field at a time', () => {
     analyze: () => Promise.resolve(analysis),
   });
 
-  it('reaches the top of the suspicious band on deterministic findings alone', () => {
+  it('scores well into the suspicious band on deterministic findings alone', () => {
     expect(result.classification).toBe('suspicious');
-    expect(result.score).toBeGreaterThanOrEqual(65);
+    expect(result.score).toBeGreaterThanOrEqual(60);
     expect(result.categoryScores.llm).toBe(0);
   });
 
   /**
    * Why it stops short of high risk without the model, and why that is the intended shape rather than a
-   * gap. Three of the six categories are already saturated at their weights — identity, links and content
-   * all scored more than they are allowed to contribute — so further findings in them cannot raise the
-   * total. The remaining headroom is authentication, and Gmail's interface exposed none of it here beyond
-   * the relay host. The model's capped 15 then carries the message over 75, which is exactly the division
-   * of labour intended: a refinement on top of a score the checks earned, never a verdict of its own.
+   * gap. Three of the six categories are saturated at their weights — identity, links and content all
+   * scored more than they are allowed to contribute — so further findings in them cannot raise the total.
+   * The remaining headroom is authentication, and Gmail's interface exposed nothing of it here: the relay
+   * annotation is reported at zero precisely because it is equally common on honest mail. The model's
+   * capped 15 then carries the message over 75, which is the intended division of labour: a refinement on
+   * top of a score the checks earned, never a verdict of its own.
    */
   it('crosses into high risk once a corroborated model verdict is added', async () => {
     const withModel = await analyze(base, fixedAnalyzer(MODEL_VERDICT), { now: FIXED_NOW });
@@ -1310,6 +1311,25 @@ describe('phishing that is innocent one field at a time', () => {
         expect(hasSignal(scored, 'content.forged_trust_assurance')).toBe(false);
       }
     });
+
+    /**
+     * The footers a mail gateway staples onto outbound business mail, and the notice a bank's secure
+     * portal sends. Logically these are the same move — a claim inside a message about that message — but
+     * the population carrying them is overwhelmingly honest, so matching them would put 22 points on
+     * ordinary correspondence from any organisation with a scanning appliance.
+     */
+    it('leaves scanning footers and secure-portal notices alone', () => {
+      for (const line of [
+        'This email has been scanned for viruses by our mail gateway.',
+        'This message has been checked by antivirus software and no threats were found.',
+        'This is a secure message from your bank. Sign in to the portal to read it.',
+        'This email was scanned by Barracuda Email Security.',
+        'No virus found in this message.',
+      ]) {
+        const scored = analyzeDeterministic({ ...base, bodyText: line });
+        expect(hasSignal(scored, 'content.forged_trust_assurance'), line).toBe(false);
+      }
+    });
   });
 
   describe('prose hidden with CSS to dilute the wording', () => {
@@ -1348,10 +1368,69 @@ describe('phishing that is innocent one field at a time', () => {
   /**
    * The extraction bug this fixture also documents: Gmail printed `via <host>` in the header the whole
    * time, and `readVia` looked for it inside the sender element, which holds the display name and nothing
-   * else. The rule was written years before it ever ran.
+   * else. The rule was written long before it ever ran.
    */
   it('reads the via annotation Gmail showed all along', () => {
     expect(hasSignal(result, 'authentication.via_unrelated_host')).toBe(true);
+  });
+});
+
+/**
+ * The regression that followed from fixing that extraction: a rule which had never run in production
+ * started running everywhere.
+ *
+ * Gmail prints `via` whenever the authenticated sending domain differs from the From domain, which is the
+ * ordinary consequence of sending through any third-party service. It appears on a large share of real
+ * commercial mail, so a few points for it lifts most of an inbox at once — and a signal equally present in
+ * the honest and the dishonest population is not evidence, however irregular the relay host looks.
+ */
+describe('a relay host is context, not a finding', () => {
+  it('costs nothing on legitimate mail sent through a platform', () => {
+    const invoice = analyzeFixture('legitimate-invoice');
+    const finding = signalFor(invoice, 'authentication.via_unrelated_host');
+
+    expect(finding?.severity).toBe('info');
+    expect(finding?.score).toBe(0);
+    expect(invoice.categoryScores.authentication).toBe(0);
+    expect(invoice.classification).toBe('low');
+  });
+
+  it('still explains where the message came from, since the reader may want to know', () => {
+    const finding = signalFor(analyzeFixture('legitimate-invoice'), 'authentication.via_unrelated_host');
+
+    expect(finding?.evidence?.value).toBe('ledgerworks-billing.com');
+    expect(finding?.description).toContain('does not affect the score');
+  });
+
+  /**
+   * The one configuration where a relay is evidence: it contradicts a specific claim. A message calling
+   * itself Microsoft and arriving through someone else's platform is not describing how Microsoft sends
+   * mail — and unlike the plain case, that conclusion needs no reputation data about the relay.
+   */
+  it('scores when the relay contradicts a brand the message claims to be', () => {
+    const spoof = analyzeDeterministic({
+      ...loadFixture('microsoft-phish').email,
+      auth: { via: 'mail.ledgerworks-billing.com' },
+    });
+    const finding = signalFor(spoof, 'authentication.via_unrelated_host');
+
+    expect(finding?.severity).toBe('medium');
+    expect(finding?.score).toBeGreaterThan(0);
+  });
+
+  it('says nothing at all when the relay is the sender or a recognised platform', () => {
+    const legitimate = loadFixture('legitimate').email;
+    const own = analyzeDeterministic({
+      ...legitimate,
+      auth: { via: `mail.${(legitimate.senderEmail ?? '').split('@')[1] ?? ''}` },
+    });
+    const esp = analyzeDeterministic({
+      ...loadFixture('legitimate-newsletter').email,
+      auth: { via: 'sendgrid.net' },
+    });
+
+    expect(hasSignal(own, 'authentication.via_unrelated_host')).toBe(false);
+    expect(hasSignal(esp, 'authentication.via_unrelated_host')).toBe(false);
   });
 });
 

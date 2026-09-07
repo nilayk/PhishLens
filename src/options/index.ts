@@ -250,7 +250,9 @@ class OptionsPage {
       const response = await sendMessage({ type: 'LIST_MODELS' });
       if (response === null || !response.ok || response.type !== 'MODELS') {
         const reason = response !== null && !response.ok ? response.error : 'no response';
-        this.#serverError.textContent = `Could not reach the server (${reason}). Check that it is running, and that it accepts requests from extensions — Ollama needs OLLAMA_ORIGINS to include chrome-extension://*.`;
+        // The worker's message already names the likely cause and the setting that fixes it, so this adds
+        // no advice of its own: two overlapping explanations of the same failure read as neither being sure.
+        this.#serverError.textContent = `Could not connect: ${reason}.`;
         return;
       }
 
