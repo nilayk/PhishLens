@@ -14,8 +14,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { analyzeDeterministic } from '../src/analysis/engine.js';
+import { HealthLog } from '../src/content/health.js';
 import { isScorable } from '../src/gmail/adapter.js';
-import { browserVersion, formatDiagnostic, type SelectorProbe } from '../src/gmail/diagnostics.js';
+import {
+  browserVersion,
+  formatDiagnostic,
+  formatHealth,
+  type SelectorProbe,
+} from '../src/gmail/diagnostics.js';
 import type { EmailMessage, MessagePart } from '../src/shared/types.js';
 import { unreadableNotes } from '../src/ui/format.js';
 import { UNREADABLE_LABEL } from '../src/ui/labels.js';
@@ -195,6 +201,93 @@ describe('the diagnostic report', () => {
    */
   it('carries nothing from the message', () => {
     const phish = loadFixture('microsoft-phish').email;
+    for (const secret of [phish.senderEmail, phish.subject, phish.bodyText.slice(0, 40)]) {
+      if (secret === undefined || secret === '') continue;
+      expect(report).not.toContain(secret);
+    }
+  });
+});
+
+/**
+ * The session tally behind the popup's health row.
+ *
+ * What makes it worth testing is the sampling: probing every selector candidate per message would be
+ * work spent on the case where nothing is wrong, so it happens on the first message and thereafter only
+ * on a miss. Get that wrong in either direction and the feature either costs measurably or reports
+ * nothing.
+ */
+describe('the session health tally', () => {
+  const clean: SelectorProbe[] = [{ group: 'senderSpan', scope: 'message', candidate: 0 }];
+  const drifting: SelectorProbe[] = [{ group: 'senderSpan', scope: 'document', candidate: 2 }];
+
+  it('counts messages and the parts that went unread', () => {
+    const log = new HealthLog();
+    log.record([], true, () => clean);
+    log.record(['subject'], true, () => clean);
+    log.record(['subject'], true, () => clean);
+    log.record(['sender'], false, () => clean);
+
+    const summary = log.summary();
+    expect(summary.seen).toBe(4);
+    expect(summary.unscorable).toBe(1);
+    expect(summary.misses).toEqual([
+      { part: 'subject', count: 2 },
+      { part: 'sender', count: 1 },
+    ]);
+  });
+
+  it('probes the first message, then only when something was missed', () => {
+    let probes = 0;
+    const log = new HealthLog();
+    const probe = (): SelectorProbe[] => {
+      probes += 1;
+      return clean;
+    };
+
+    log.record([], true, probe);
+    expect(probes).toBe(1);
+
+    for (let i = 0; i < 10; i += 1) log.record([], true, probe);
+    expect(probes).toBe(1);
+
+    log.record(['subject'], true, probe);
+    expect(probes).toBe(2);
+  });
+
+  it('reports a group that matched something other than its preferred candidate', () => {
+    const log = new HealthLog();
+    log.record([], true, () => drifting);
+    expect(log.summary().drifted).toEqual(['senderSpan']);
+  });
+
+  it('reports no drift while every group matches its first candidate', () => {
+    const log = new HealthLog();
+    log.record([], true, () => clean);
+    expect(log.summary().drifted).toEqual([]);
+  });
+
+  /**
+   * The same claim as the single-message report, for the button that copies this one. Both formatters are
+   * pure so that this can be asked at all: given only counts, part names and selector groups there is no
+   * path by which a message could reach the clipboard.
+   */
+  it('produces a report carrying nothing from any message', () => {
+    const phish = loadFixture('microsoft-phish').email;
+    const report = formatHealth({
+      adapter: 'gmail-dom',
+      version: '0.3.0',
+      browser: 'Chrome/139.0.0.0',
+      health: {
+        seen: 3,
+        unscorable: 1,
+        misses: [{ part: 'sender', count: 1 }],
+        drifted: ['senderSpan'],
+      },
+      probes: drifting,
+    });
+
+    expect(report).toContain('senderSpan');
+    expect(report).toContain('unread:      sender ×1');
     for (const secret of [phish.senderEmail, phish.subject, phish.bodyText.slice(0, 40)]) {
       if (secret === undefined || secret === '') continue;
       expect(report).not.toContain(secret);

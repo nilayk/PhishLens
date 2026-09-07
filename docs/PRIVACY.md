@@ -50,6 +50,11 @@ a trust decision that did not outlive the tab would be useless. The list is capp
 bounded in length and required to look like an address or a hostname, and it is visible and editable in
 the options page. Nothing else — no subject, no body, no score, no history of what you have read.
 
+The session's **extraction health** — how many messages were seen, how many parts could not be found, and
+which selector groups fell through to a fallback — is counted in the tab and shown in the popup, so a
+Gmail layout change is visible rather than silent. It is counts and selector names only; the diagnostic
+you can copy from the popup is asserted by a test to contain nothing from any message.
+
 **Potentially leaving the browser** — nothing by default. Two modes can send message content, and both
 require an explicit choice *and* an address, neither of which has a default value:
 

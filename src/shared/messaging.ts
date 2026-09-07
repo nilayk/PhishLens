@@ -115,7 +115,15 @@ export interface OpenPanelRequest {
   type: 'OPEN_PANEL';
 }
 
-export type TabRequest = GetTabStatusRequest | OpenPanelRequest;
+/**
+ * The pasteable session report. Asked for separately from the status because building it walks every
+ * selector candidate against the page, and nothing needs it until a user presses the button.
+ */
+export interface GetHealthReportRequest {
+  type: 'GET_HEALTH_REPORT';
+}
+
+export type TabRequest = GetTabStatusRequest | OpenPanelRequest | GetHealthReportRequest;
 
 /**
  * The state of the tab, as much of it as the popup needs.
@@ -139,12 +147,32 @@ export type TabStatus =
       semantic: SemanticStatus;
     };
 
+/**
+ * How well the adapter has been reading this tab, accumulated since it loaded. See `content/health.ts`.
+ *
+ * Travels with the status because it is the other half of the same question. A verdict says what was
+ * found in one message; this says whether the thing producing verdicts is still reading Gmail properly,
+ * which is the failure a user has no other way to notice.
+ */
+export interface TabHealth {
+  seen: number;
+  unscorable: number;
+  misses: readonly { part: MessagePart; count: number }[];
+  /** Selector groups not matching their preferred candidate. Group names only, never message content. */
+  drifted: readonly string[];
+}
+
 export type TabResponse =
-  | { ok: true; type: 'TAB_STATUS'; status: TabStatus }
+  | { ok: true; type: 'TAB_STATUS'; status: TabStatus; health: TabHealth }
+  | { ok: true; type: 'HEALTH_REPORT'; report: string }
   | { ok: true; type: 'ACKNOWLEDGED' }
   | { ok: false; error: string };
 
-const TAB_REQUEST_TYPES: ReadonlySet<string> = new Set(['GET_TAB_STATUS', 'OPEN_PANEL']);
+const TAB_REQUEST_TYPES: ReadonlySet<string> = new Set([
+  'GET_TAB_STATUS',
+  'OPEN_PANEL',
+  'GET_HEALTH_REPORT',
+]);
 
 export function isTabRequest(value: unknown): value is TabRequest {
   if (value === null || typeof value !== 'object') return false;

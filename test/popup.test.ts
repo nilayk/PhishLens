@@ -6,8 +6,9 @@
  * careless edit apart.
  */
 import { describe, expect, it } from 'vitest';
-import { aiRow, cardButtonLabel, findingsLine, headline } from '../src/popup/present.js';
+import { aiRow, cardButtonLabel, findingsLine, headline, healthRow } from '../src/popup/present.js';
 import type { PopupState } from '../src/popup/present.js';
+import type { TabHealth } from '../src/shared/messaging.js';
 import { DEFAULT_SETTINGS } from '../src/shared/settings.js';
 import type { SemanticStatus, Settings } from '../src/shared/types.js';
 
@@ -160,5 +161,52 @@ describe('aiRow', () => {
   it('explains an absent on-device model without implying the checks failed', () => {
     const row = aiRow(settings({ aiMode: 'local' }), scored({ semantic: 'unavailable' }));
     expect(row.fix).toMatch(/technical checks are unaffected/i);
+  });
+});
+
+describe('healthRow', () => {
+  const health = (over: Partial<TabHealth> = {}): TabHealth => ({
+    seen: 20,
+    unscorable: 0,
+    misses: [],
+    drifted: [],
+    ...over,
+  });
+
+  it('says nothing while everything is being read', () => {
+    expect(healthRow(health())).toBeNull();
+  });
+
+  it('says nothing before enough messages to see a pattern', () => {
+    // One unusual message is not evidence that Gmail changed, and sending someone to file a report
+    // about it wastes their time and ours.
+    expect(healthRow(health({ seen: 1, unscorable: 1 }))).toBeNull();
+  });
+
+  it('leads with the count of messages that were not scored', () => {
+    const row = healthRow(health({ seen: 20, unscorable: 3 }));
+    expect(row?.headline).toBe('3 of 20 messages could not be read');
+    expect(row?.detail).toMatch(/not scored/i);
+  });
+
+  it('names the part that went unread when the score still stood', () => {
+    const row = healthRow(health({ misses: [{ part: 'subject', count: 6 }] }));
+    expect(row?.headline).toBe('6 of 20 messages had no readable subject');
+    expect(row?.detail).toMatch(/still scored/i);
+  });
+
+  it('reports a selector list running on a fallback before it breaks', () => {
+    const row = healthRow(health({ drifted: ['senderEmail'] }));
+    expect(row?.headline).toMatch(/fallback/i);
+  });
+
+  it('promises the report holds no mail, on every branch that offers one', () => {
+    const rows = [
+      healthRow(health({ unscorable: 2 })),
+      healthRow(health({ misses: [{ part: 'subject', count: 2 }] })),
+    ];
+    for (const row of rows) {
+      expect(row?.detail).toMatch(/none of your mail/i);
+    }
   });
 });

@@ -19,6 +19,7 @@
  * nothing in it that needs interpreting.
  */
 import type { MessagePart } from '../shared/types.js';
+import type { TabHealth } from '../shared/messaging.js';
 import type { MessageHandle } from './adapter.js';
 import { SELECTORS } from './selectors.js';
 
@@ -102,6 +103,48 @@ function describeProbe(probe: SelectorProbe): string {
   return `${probe.scope} #${String(probe.candidate)} ${candidate}`;
 }
 
+export interface HealthInput extends Pick<DiagnosticInput, 'adapter' | 'version' | 'browser'> {
+  health: TabHealth;
+  probes: readonly SelectorProbe[];
+}
+
+/**
+ * The session variant: the same report, for a tab where extraction is degrading rather than failing.
+ *
+ * Shares the selector table and the version lines with `formatDiagnostic` but not its shape, because the
+ * two answer different questions. That one describes one message that could not be read; this one
+ * describes a pattern across a session, and the counts are the part that distinguishes "Gmail moved this
+ * element" from "one unusual message".
+ *
+ * Pure for the same reason as `formatDiagnostic`: the claim that no message content can appear in the
+ * output is worth only as much as a test can check, and a function reading `chrome` and `navigator` needs
+ * a fake browser before it can be asked.
+ */
+export function formatHealth(input: HealthInput): string {
+  const { health } = input;
+  const misses =
+    health.misses.length > 0
+      ? health.misses.map((miss) => `${miss.part} ×${String(miss.count)}`).join(', ')
+      : 'none';
+
+  const lines = [
+    `PhishLens ${input.version} — session diagnostic`,
+    `adapter:     ${input.adapter}`,
+    `browser:     ${input.browser}`,
+    `messages:    ${String(health.seen)}`,
+    `not scored:  ${String(health.unscorable)}`,
+    `unread:      ${misses}`,
+    'selectors:',
+  ];
+
+  const width = input.probes.reduce((max, probe) => Math.max(max, probe.group.length), 0);
+  for (const probe of input.probes) {
+    lines.push(`  ${probe.group.padEnd(width)}  ${describeProbe(probe)}`);
+  }
+
+  return lines.join('\n');
+}
+
 /** The browser version, without the rest of a user-agent string's fingerprinting surface. */
 export function browserVersion(userAgent: string): string {
   return /Chrom(?:e|ium)\/[\d.]+/u.exec(userAgent)?.[0] ?? 'unknown';
@@ -113,13 +156,25 @@ export function buildDiagnostic(
   missing: readonly MessagePart[],
   adapter: string,
 ): string {
-  return formatDiagnostic({
+  return formatDiagnostic({ ...environment(adapter), missing, probes: probeSelectors(handle) });
+}
+
+/** The whole report for the session. */
+export function buildHealthReport(
+  health: TabHealth,
+  probes: readonly SelectorProbe[],
+  adapter: string,
+): string {
+  return formatHealth({ ...environment(adapter), health, probes });
+}
+
+/** The three lines both reports open with, and the only place either of them touches the browser. */
+function environment(adapter: string): Pick<DiagnosticInput, 'adapter' | 'version' | 'browser'> {
+  return {
     adapter,
     version: extensionVersion(),
     browser: browserVersion(navigator.userAgent),
-    missing,
-    probes: probeSelectors(handle),
-  });
+  };
 }
 
 function extensionVersion(): string {

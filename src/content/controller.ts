@@ -18,7 +18,7 @@ import {
 } from '../analysis/engine.js';
 import { localAnalyzer, resolveAnalyzer } from '../analysis/llm/index.js';
 import { isScorable, type MailAdapter, type MessageHandle } from '../gmail/adapter.js';
-import { buildDiagnostic } from '../gmail/diagnostics.js';
+import { buildDiagnostic, probeSelectors } from '../gmail/diagnostics.js';
 import { GmailObserver, type ObserverEvent } from '../gmail/observer.js';
 import { logger } from '../shared/logger.js';
 import { isTabRequest, sendMessage, type TabResponse, type TabStatus } from '../shared/messaging.js';
@@ -35,6 +35,7 @@ import type {
 import { Badge } from '../ui/badge.js';
 import { Highlighter } from '../ui/highlight.js';
 import { Panel, type PanelView, type UnreadableView } from '../ui/panel.js';
+import { HealthLog } from './health.js';
 
 /**
  * Bounded in-memory cache so revisiting a thread does not re-run the model.
@@ -69,6 +70,7 @@ export class Controller {
   readonly #panel: Panel;
   readonly #highlighter = new Highlighter();
   readonly #cache = new Map<string, AnalysisResult>();
+  readonly #health = new HealthLog();
 
   #settings: Settings = { ...DEFAULT_SETTINGS };
   #active: ActiveView | null = null;
@@ -158,6 +160,10 @@ export class Controller {
       semantic: aiMode === 'off' ? 'off' : 'pending',
     };
     this.#active = active;
+
+    // Recorded for every message, readable or not: the tally's value is the ratio, and counting only
+    // the failures would make one unusual message look like Gmail having changed.
+    this.#health.record(event.missing, isScorable(event.missing), () => probeSelectors(event.handle));
 
     if (event.handle.headerElement !== null) {
       this.#badge.attach(event.handle.headerElement);
@@ -342,7 +348,12 @@ export class Controller {
       return false;
     }
 
-    respond({ ok: true, type: 'TAB_STATUS', status: this.#status() });
+    if (message.type === 'GET_HEALTH_REPORT') {
+      respond({ ok: true, type: 'HEALTH_REPORT', report: this.#health.report(this.#adapter.id) });
+      return false;
+    }
+
+    respond({ ok: true, type: 'TAB_STATUS', status: this.#status(), health: this.#health.summary() });
     return false;
   };
 

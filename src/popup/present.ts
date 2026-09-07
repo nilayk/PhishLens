@@ -9,7 +9,7 @@
  * phrasing. Everything else is detail.
  */
 import type { AiMode, MessagePart, SemanticStatus, Settings } from '../shared/types.js';
-import type { TabStatus } from '../shared/messaging.js';
+import type { TabHealth, TabStatus } from '../shared/messaging.js';
 import {
   CLASSIFICATION_GLYPHS,
   CLASSIFICATION_LABELS,
@@ -42,6 +42,13 @@ const PART_NAMES: Readonly<Record<MessagePart, string>> = {
   sender: 'who it is from',
   subject: 'its subject',
   body: 'its text',
+};
+
+/** The same parts as bare nouns, for the sentences that count them rather than list them. */
+const PART_NOUNS: Readonly<Record<MessagePart, string>> = {
+  sender: 'sender',
+  subject: 'subject',
+  body: 'body text',
 };
 
 /** "who it is from", "who it is from and its text" — a list a sentence can contain. */
@@ -129,6 +136,61 @@ export function findingsLine(state: PopupState): string | null {
 export function cardButtonLabel(state: PopupState): string | null {
   if (state.kind === 'scored') return 'Show the full assessment';
   if (state.kind === 'unreadable') return 'Show what could not be read';
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Extraction health
+// ---------------------------------------------------------------------------
+
+/**
+ * A tally worth mentioning only after enough messages that a pattern means something. Below this, one
+ * unusual message would read as Gmail having changed, which sends a user to file a report about nothing.
+ */
+const HEALTH_MIN_MESSAGES = 3;
+
+export interface HealthRow {
+  headline: string;
+  detail: string;
+}
+
+/**
+ * What to say about how well Gmail is being read, or `null` when there is nothing to say.
+ *
+ * Silent in the healthy case on purpose. This row is the only place a *degrading* extraction becomes
+ * visible — a selector list on its last fallback, a subject going unread on every message — but a row
+ * that were always present, usually saying "fine", is a row nobody reads by the time it matters.
+ */
+export function healthRow(health: TabHealth): HealthRow | null {
+  if (health.seen < HEALTH_MIN_MESSAGES) return null;
+
+  if (health.unscorable > 0) {
+    return {
+      headline: `${String(health.unscorable)} of ${String(health.seen)} messages could not be read`,
+      detail:
+        'Those were not scored. This is usually Gmail having changed its page structure, which is fixable — the report below names the part that stopped matching and contains none of your mail.',
+    };
+  }
+
+  // Only ever a subject at this point: a message missing its sender or body is unscorable and was
+  // reported above. The commonest miss is named, because one name is more actionable than a list.
+  const worst = health.misses.find((miss) => miss.count > 0);
+  if (worst !== undefined) {
+    return {
+      headline: `${String(worst.count)} of ${String(health.seen)} messages had no readable ${PART_NOUNS[worst.part]}`,
+      detail:
+        'Those messages were still scored, with fewer checks behind the score than usual. The report below names what stopped matching and contains none of your mail.',
+    };
+  }
+
+  if (health.drifted.length > 0) {
+    return {
+      headline: 'Reading Gmail through a fallback',
+      detail:
+        'Everything is being read, but not by the first method PhishLens tries — which usually means Gmail has moved something and the preferred one will stop working. Reporting it now is what gets it fixed before it does.',
+    };
+  }
+
   return null;
 }
 

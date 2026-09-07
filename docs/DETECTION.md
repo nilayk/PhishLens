@@ -184,7 +184,7 @@ attacker. Four constraints, each with a test:
 
 ## Confidence in the numbers
 
-846 tests run the real pipeline in plain Node — no Chrome, no Gmail, no network. The corpus in
+857 tests run the real pipeline in plain Node — no Chrome, no Gmail, no network. The corpus in
 `test/fixtures/` holds 20 messages: a plain legitimate message, a legitimate password reset, a legitimate
 reply into an existing thread, a newsletter with many links, a newsletter whose links are all rewritten
 through its platform's click tracker, an invoice, PayPal phishing, a Microsoft lookalike domain, a brand

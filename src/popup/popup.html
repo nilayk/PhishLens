@@ -218,6 +218,29 @@
         margin: 8px 0 0;
         font-size: 12px;
       }
+      .health-headline {
+        margin: 0;
+        font-weight: 500;
+      }
+      /*
+        Shown in full and selectable, not just copied. The clipboard can refuse, and a report a user is
+        about to paste into a public issue is one they must be able to read first.
+      */
+      .report {
+        max-height: 180px;
+        margin: 10px 0 0;
+        padding: 8px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--card);
+        color: var(--muted);
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 11px;
+        line-height: 1.45;
+        white-space: pre;
+        user-select: text;
+      }
       label.toggle {
         display: flex;
         gap: 8px;
@@ -266,6 +289,14 @@
       <p class="fix" id="aiFix" hidden></p>
       <button type="button" class="primary" id="test" hidden>Test connection</button>
       <p class="test-result" id="testResult" role="status" hidden></p>
+    </section>
+
+    <!-- Hidden unless the tally has something to report. See `healthRow` in present.ts. -->
+    <section id="healthSection" hidden>
+      <p class="health-headline" id="healthHeadline"></p>
+      <p class="fix" id="healthDetail"></p>
+      <button type="button" class="primary" id="copy">Copy report</button>
+      <pre class="report" id="healthReport" hidden></pre>
     </section>
 
     <section>

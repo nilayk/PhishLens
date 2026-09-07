@@ -41,7 +41,10 @@ score's arithmetic is shown at the bottom, so a number you disagree with is a nu
 ### The toolbar button
 
 Clicking PhishLens in the Chrome toolbar tells you what it is doing right now: the verdict for the tab
-you are on, whether the AI part is working, and a link to fix it if not.
+you are on, whether the AI part is working, and a link to fix it if not. If the extension has been
+failing to read your messages — usually because Gmail changed its layout — this is where it says so, and
+where you can copy a short report to paste into an issue. The report contains counts and selector names,
+never anything from your mail.
 
 ### When it is wrong about someone
 

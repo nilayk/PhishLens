@@ -45,6 +45,7 @@ silently between builds is one nobody can review. Refreshing it is a visible dif
 ```text
 src/
   content/      orchestration: observe → extract → analyse → render. All state lives here.
+                Also the session health log.
   background/   service worker: settings, model-server egress. Deliberately stateless.
   gmail/        DOM adapter + SPA observer. The only place that knows Gmail's markup.
   analysis/
@@ -52,7 +53,7 @@ src/
     scoring/    weights, ceilings, thresholds, and the pure aggregation function
     llm/        semantic layer: prompt, strict output parsing, on-device + cloud adapters
   ui/           badge, panel, highlighting. No framework; Shadow DOM; textContent only.
-  popup/        the toolbar popup: verdict for the tab and AI status
+  popup/        the toolbar popup: verdict for the tab, AI status, extraction health
   options/      settings page
   welcome/      the page shown once on install
   shared/       types, URL/Unicode/brand primitives, settings, trust list, logging
@@ -116,7 +117,7 @@ UI change is one command away from being reflected in the README instead of sile
 
 ## Testing
 
-846 tests, all in plain Node — no Chrome, no Gmail, no network.
+857 tests, all in plain Node — no Chrome, no Gmail, no network.
 
 | File | Covers |
 | --- | --- |
@@ -129,10 +130,10 @@ UI change is one command away from being reflected in the README instead of sile
 | `test/privacy.test.ts` | Settings validation, the model-server URL policy from both directions (loopback `http:` yes, anything else no), and what `buildCloudPayload` **drops** as well as what it keeps. |
 | `test/observer.test.ts` | The SPA observer's emit and suppress decisions in both directions, since every negative decision it makes is silent by design. |
 | `test/hidden-text.test.ts` | Which inline styles count as hiding, and — mostly — which do not: this is the one scan whose output is *removed* from the body before scoring, so an over-eager rule deletes the evidence rather than finding it. |
-| `test/extraction.test.ts` | The extraction-gap rule, starting by demonstrating the danger: a thread hijack scored with its sender removed comes back **Low Risk**, because a reply-chain attack is detectable only from identity. Also that the card's wording never reassures, and that the diagnostic carries nothing from the message. |
+| `test/extraction.test.ts` | The extraction-gap rule, starting by demonstrating the danger: a thread hijack scored with its sender removed comes back **Low Risk**, because a reply-chain attack is detectable only from identity. Also that the card's wording never reassures, and that neither diagnostic — the single-message one or the session tally — carries anything from a message. |
 | `test/model-protocol.test.ts` | The OpenAI-compatible request and response shapes, and the URL policy the worker enforces before any of it is sent. |
 | `test/trust.test.ts` | Each of the four limits on trusted senders, from both sides: that trust dampens what it should, and that it does nothing at all when authentication did not prove the sender, against an identity finding, or against a `high` finding. |
-| `test/popup.test.ts` | The popup's wording for every state, and in particular that "nothing was found" and "nothing was checked" never share a phrasing. |
+| `test/popup.test.ts` | The popup's wording for every state — in particular that "nothing was found" and "nothing was checked" never share a phrasing — and the health line for each shape of extraction failure. |
 
 Fixture philosophy and the both-directions assertion are described in
 [DETECTION.md](DETECTION.md#confidence-in-the-numbers).

@@ -683,7 +683,9 @@ surface honestly say with the evidence it has.
 **The toolbar popup** (`src/popup/`) answers "is this thing working". Before it existed, every failure mode
 looked identical from the outside: no AI because the browser has no model, no AI because the model server
 is unreachable, no badge because Gmail's markup moved, no badge because the message is one the user sent.
-The popup asks the content script for the tab's current status and says which.
+The popup asks the content script for the tab's current status and says which. It also carries the session
+health row and the copy button described below, because a diagnostic reachable only from a card that
+appears on failure is a diagnostic nobody finds.
 
 Its presentation logic is a separate pure module (`present.ts`) tested in Node, for the same reason the rest
 of the wording is: the strings are the product here, and a string chosen inside a DOM callback can only be
@@ -695,6 +697,28 @@ the badge appears next to the sender, that AI is optional — are exactly the on
 looking. It opens once, on install, and asks for nothing. It ships as authored HTML with no script at all,
 which is why `check-dist.mjs` scans every page in `dist/` rather than only the ones the manifest names:
 nothing the manifest can be read for references it.
+
+### 5.4 Selector drift, made visible without telemetry
+
+§3.3 covers the loud failure: a message that cannot be read is not scored. The quiet one is worse. A
+selector group falls through to its third candidate, or one part of every message goes unread, and the
+extension keeps producing scores that are merely *worse* — indistinguishable from normal operation from the
+outside, and invisible to us because there is no telemetry and never will be.
+
+`src/content/health.ts` tallies it per tab: messages seen, messages not scored, which parts went unread and
+how often, and which selector groups did not match their preferred candidate. That last one is the useful
+part — a group working on candidate 3 of 4 is one Gmail release from not working, and reporting it *while it
+still works* is the entire point.
+
+Two details are deliberate. Probing walks every candidate in `selectors.ts` against the DOM, so it runs on
+the first message of the session — establishing a baseline, including a group already limping — and
+thereafter only when something went unread; doing it per message would be work spent on the case where
+nothing is wrong. And nothing is persisted, because a tally that survived a restart would describe
+yesterday's Gmail.
+
+The user-facing end is a line in the popup and a button that copies a report. Both formatters in
+`gmail/diagnostics.ts` are pure functions over counts, part names and selector strings we wrote, which is
+what lets a test assert that neither can put message content on the clipboard.
 
 ---
 
@@ -794,6 +818,7 @@ per-origin grant like §6's and CORS headers on the service.
 | Analysed locally (rules)       | `AnalysisContext`, `SecuritySignal[]` — in-memory only       | No                  |
 | Analysed locally (on-device AI) | truncated prompt → on-device model                          | No                  |
 | Persisted                      | settings (`aiMode`, `highlightEnabled`, …) **and the trusted-sender list** | `storage.sync` only |
+| Session health                 | counts of messages seen, parts unread, selector groups drifted | No                |
 | Own model server (opt-in)      | the same truncated prompt — name, subject, body             | To that address; loopback by default |
 | Cloud-assisted (opt-in, unbuilt) | redacted `CloudAnalyzeRequest`                             | Yes — to our backend |
 
@@ -805,6 +830,9 @@ per-origin grant like §6's and CORS headers on the service.
   deliberate one: a trust decision that did not outlive the tab would be useless. It holds addresses and
   registrable domains the user chose, nothing else — no subject, no score, no record of what was read — and
   it is visible and editable in the options page (§4.2.3).
+- **Extraction health is counted, never persisted and never sent** (§5.4). Counts and selector names only;
+  the copyable report is produced by pure functions over that data, which is what makes "it contains nothing
+  from your mail" a test rather than a promise.
 - `src/shared/logger.ts` is the only logging surface. It is a no-op unless
   `__PHISHLENS_DEV__` is true (a compile-time `define`, `false` in production builds), and it
   additionally refuses to log values that look like message bodies. Production bundles contain no

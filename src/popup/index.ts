@@ -12,11 +12,18 @@
  * Wording lives in `present.ts`, which is pure and tested. This file is the wiring.
  */
 import { logger } from '../shared/logger.js';
-import { sendMessage, sendTabMessage } from '../shared/messaging.js';
+import { sendMessage, sendTabMessage, type TabHealth } from '../shared/messaging.js';
 import { DEFAULT_SETTINGS } from '../shared/settings.js';
 import type { Settings } from '../shared/types.js';
 import { el } from '../ui/dom.js';
-import { aiRow, cardButtonLabel, findingsLine, headline, type PopupState } from './present.js';
+import {
+  aiRow,
+  cardButtonLabel,
+  findingsLine,
+  headline,
+  healthRow,
+  type PopupState,
+} from './present.js';
 
 declare const __PHISHLENS_VERSION__: string;
 
@@ -61,6 +68,11 @@ class Popup {
   readonly #aiFix = requireElement('aiFix', HTMLParagraphElement);
   readonly #test = requireElement('test', HTMLButtonElement);
   readonly #testResult = requireElement('testResult', HTMLParagraphElement);
+  readonly #healthSection = requireElement('healthSection', HTMLElement);
+  readonly #healthHeadline = requireElement('healthHeadline', HTMLParagraphElement);
+  readonly #healthDetail = requireElement('healthDetail', HTMLParagraphElement);
+  readonly #copy = requireElement('copy', HTMLButtonElement);
+  readonly #healthReport = requireElement('healthReport', HTMLPreElement);
   readonly #settings = requireElement('settings', HTMLButtonElement);
   readonly #showBadgeWhenLow = requireElement('showBadgeWhenLow', HTMLInputElement);
   readonly #highlightEnabled = requireElement('highlightEnabled', HTMLInputElement);
@@ -100,23 +112,27 @@ class Popup {
       void this.#save({ highlightEnabled: this.#highlightEnabled.checked });
     });
 
-    const [settings, state] = await Promise.all([readSettings(), this.#readState()]);
-    this.#render(settings, state);
+    this.#copy.addEventListener('click', () => {
+      void this.#copyReport();
+    });
+
+    const [settings, tab] = await Promise.all([readSettings(), this.#readState()]);
+    this.#render(settings, tab.state, tab.health);
   }
 
-  async #readState(): Promise<PopupState> {
+  async #readState(): Promise<{ state: PopupState; health: TabHealth | null }> {
     const tabId = await gmailTabId();
     this.#tabId = tabId;
-    if (tabId === null) return { kind: 'not-gmail' };
+    if (tabId === null) return { state: { kind: 'not-gmail' }, health: null };
 
     const response = await sendTabMessage(tabId, { type: 'GET_TAB_STATUS' });
     if (response === null || !response.ok || response.type !== 'TAB_STATUS') {
-      return { kind: 'unreachable' };
+      return { state: { kind: 'unreachable' }, health: null };
     }
-    return response.status;
+    return { state: response.status, health: response.health };
   }
 
-  #render(settings: Settings, state: PopupState): void {
+  #render(settings: Settings, state: PopupState, health: TabHealth | null): void {
     const head = headline(state);
     this.#chip.dataset['tone'] = head.tone;
     this.#glyph.textContent = head.glyph;
@@ -140,8 +156,48 @@ class Popup {
     this.#aiFix.hidden = ai.fix === null;
     this.#test.hidden = !ai.testable;
 
+    this.#renderHealth(health);
+
     this.#showBadgeWhenLow.checked = settings.showBadgeWhenLow;
     this.#highlightEnabled.checked = settings.highlightEnabled;
+  }
+
+  #renderHealth(health: TabHealth | null): void {
+    const row = health === null ? null : healthRow(health);
+    this.#healthSection.hidden = row === null;
+    if (row === null) return;
+
+    this.#healthHeadline.textContent = row.headline;
+    this.#healthDetail.textContent = row.detail;
+  }
+
+  /**
+   * Copies the session report, and shows it either way.
+   *
+   * `navigator.clipboard` can refuse — an unfocused document is enough — so the failure path puts the
+   * text on screen to be selected by hand. Same reasoning as the unreadable card: a user who cannot see
+   * what they are about to paste into a public issue has no way to check it holds none of their mail.
+   */
+  async #copyReport(): Promise<void> {
+    const tabId = this.#tabId;
+    if (tabId === null) return;
+
+    const response = await sendTabMessage(tabId, { type: 'GET_HEALTH_REPORT' });
+    if (response === null || !response.ok || response.type !== 'HEALTH_REPORT') {
+      this.#healthReport.textContent = 'That tab stopped answering. Reload Gmail and try again.';
+      this.#healthReport.hidden = false;
+      return;
+    }
+
+    this.#healthReport.textContent = response.report;
+    this.#healthReport.hidden = false;
+    try {
+      await navigator.clipboard.writeText(response.report);
+      this.#copy.textContent = 'Copied';
+    } catch (error) {
+      logger.debug('clipboard refused', error);
+      this.#copy.textContent = 'Select the text below to copy it';
+    }
   }
 
   #renderFindings(state: PopupState, findings: string | null): void {
