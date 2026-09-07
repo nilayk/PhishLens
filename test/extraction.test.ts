@@ -17,7 +17,8 @@ import { analyzeDeterministic } from '../src/analysis/engine.js';
 import { isScorable } from '../src/gmail/adapter.js';
 import { browserVersion, formatDiagnostic, type SelectorProbe } from '../src/gmail/diagnostics.js';
 import type { EmailMessage, MessagePart } from '../src/shared/types.js';
-import { UNREADABLE_LABEL, unreadableNotes } from '../src/ui/format.js';
+import { unreadableNotes } from '../src/ui/format.js';
+import { UNREADABLE_LABEL } from '../src/ui/labels.js';
 import { loadFixture } from './fixtures/load.js';
 
 /** The extraction a broken sender selector produces: everything else intact, no address. */

@@ -8,14 +8,14 @@
 import type { AnalysisResult, Classification } from '../shared/types.js';
 import { createShadowHost, el } from './dom.js';
 import { BADGE_CSS } from './styles.js';
+import { ariaLabel } from './format.js';
 import {
   CLASSIFICATION_GLYPHS,
   CLASSIFICATION_LABELS,
   UNREADABLE_ARIA,
   UNREADABLE_GLYPH,
   UNREADABLE_LABEL,
-  ariaLabel,
-} from './format.js';
+} from './labels.js';
 
 const HOST_ID = 'phishlens-badge-host';
 

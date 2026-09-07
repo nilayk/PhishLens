@@ -24,10 +24,6 @@ import type {
 import { createShadowHost, el } from './dom.js';
 import {
   AI_DISCLAIMER,
-  CATEGORY_LABELS,
-  CLASSIFICATION_LABELS,
-  SEVERITY_LABELS,
-  UNREADABLE_LABEL,
   aiAbsenceNote,
   evidenceOf,
   isLocatable,
@@ -35,6 +31,12 @@ import {
   pendingLabel,
   unreadableNotes,
 } from './format.js';
+import {
+  CATEGORY_LABELS,
+  CLASSIFICATION_LABELS,
+  SEVERITY_LABELS,
+  UNREADABLE_LABEL,
+} from './labels.js';
 import { PANEL_CSS } from './styles.js';
 
 const HOST_ID = 'phishlens-panel-host';

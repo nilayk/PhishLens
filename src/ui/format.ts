@@ -1,10 +1,9 @@
 /**
- * Presentation strings. Wording is a security control here, not decoration:
+ * Wording that is derived rather than looked up. The fixed names live in `labels.ts`.
  *
- *  1. **Not alarmist.** "Caution" and "Suspicious", never "DANGER". A badge that overstates gets
- *     dismissed, and a dismissed badge protects nobody.
- *  2. **Observations and assessments read differently.** Deterministic findings state what was measured;
- *     semantic ones are framed as opinion, so a model's guess never looks like a proven fact.
+ * Wording is a security control here, not decoration: **observations and assessments must read
+ * differently.** Deterministic findings state what was measured; semantic ones are framed as opinion, so
+ * a model's guess never looks like a proven fact.
  */
 import type {
   AiMode,
@@ -13,45 +12,9 @@ import type {
   MessagePart,
   SecuritySignal,
   SemanticStatus,
-  Severity,
-  SignalCategory,
 } from '../shared/types.js';
 import { normalizeDomain } from '../shared/url.js';
-
-export const CLASSIFICATION_LABELS: Readonly<Record<Classification, string>> = {
-  low: 'Low Risk',
-  caution: 'Caution',
-  suspicious: 'Suspicious',
-  'high-risk': 'High Risk',
-};
-
-/**
- * Glyphs match the states suggested in the brief. Text-only characters rather than emoji so they
- * render identically across platforms and do not shift the badge's height.
- */
-export const CLASSIFICATION_GLYPHS: Readonly<Record<Classification, string>> = {
-  low: '✓',
-  caution: '!',
-  suspicious: '⚠',
-  'high-risk': '⛔',
-};
-
-export const SEVERITY_LABELS: Readonly<Record<Severity, string>> = {
-  critical: 'CRITICAL',
-  high: 'HIGH',
-  medium: 'MEDIUM',
-  low: 'LOW',
-  info: 'NOTE',
-};
-
-export const CATEGORY_LABELS: Readonly<Record<SignalCategory, string>> = {
-  authentication: 'Authentication',
-  identity: 'Sender',
-  link: 'Links',
-  content: 'Wording',
-  attachment: 'Attachments',
-  llm: 'AI assessment',
-};
+import { CLASSIFICATION_LABELS } from './labels.js';
 
 export function ariaLabel(classification: Classification, score: number, findings: number): string {
   const noun = findings === 1 ? 'finding' : 'findings';
@@ -61,20 +24,6 @@ export function ariaLabel(classification: Classification, score: number, finding
 // ---------------------------------------------------------------------------
 // When the message could not be read
 // ---------------------------------------------------------------------------
-
-/**
- * Badge text for a message that was not scored.
- *
- * "Not checked" rather than "Unknown" or an error glyph: it says what did not happen, in the same
- * grammatical shape as the risk labels, and cannot be misread as a verdict of any kind. The badge is
- * still shown, because a missing badge is indistinguishable from an extension that is not installed —
- * and a reader who has come to rely on seeing one would take its absence for silence, i.e. approval.
- */
-export const UNREADABLE_LABEL = 'Not checked';
-export const UNREADABLE_GLYPH = '?';
-
-export const UNREADABLE_ARIA =
-  'PhishLens could not read this message and has not checked it. Activate for details.';
 
 /**
  * What each unread part cost, in terms of what the extension can no longer say.
