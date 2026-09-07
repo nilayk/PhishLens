@@ -154,14 +154,37 @@ mechanisms exist purely to keep legitimate mail at zero.
   or "first" and "lawsuit" become brand claims once separators are stripped for comparison.
 - **The AI dead zone.** Verdicts below 45/100, and any verdict no deterministic check corroborates, score
   zero. See [LOCAL-AI.md](LOCAL-AI.md).
+- **Trusted senders.** The user's own answer to a false positive, and the only one on this list that is
+  not automatic. See below.
 
 The fixture suite enforces this: legitimate fixtures must score low **and** produce no `high` or
 `critical` deterministic signal, which is what makes the severity floors safe rather than merely
 plausible.
 
+### Trusted senders
+
+Some senders are legitimately odd in a way no heuristic will ever like — a supplier that bills from a
+different domain than its website, a platform sending on a brand's behalf. `src/shared/trust.ts` lets the
+user say so, per address or per registrable domain, from the card.
+
+The whole design is about the fact that this is the most attractive setting in the extension to an
+attacker. Four constraints, each with a test:
+
+- **Authentication-gated.** Trust applies only when Gmail's own summary says the message passed
+  authentication for that domain (`isSenderProven`). A spoofed message from a trusted domain is scored as
+  though the list were empty, and the card says the trust was not applied.
+- **Identity findings are never dampened.** Only `content` and `authentication` findings can soften.
+  Trusting `paypal.com` has no effect on a lookalike of it, which is the attack trust would otherwise
+  enable.
+- **Severity-bounded.** A `high` or `critical` finding is never dampened by user trust alone, so trust can
+  lower a score within a band but cannot talk a message down from High Risk.
+- **Visible and reversible.** A dampened finding stays in the list with its flag, and the card states the
+  sender is trusted with an undo. Nothing is silently removed; the list is also editable in the options
+  page.
+
 ## Confidence in the numbers
 
-773 tests run the real pipeline in plain Node — no Chrome, no Gmail, no network. The corpus in
+846 tests run the real pipeline in plain Node — no Chrome, no Gmail, no network. The corpus in
 `test/fixtures/` holds 20 messages: a plain legitimate message, a legitimate password reset, a legitimate
 reply into an existing thread, a newsletter with many links, a newsletter whose links are all rewritten
 through its platform's click tracker, an invoice, PayPal phishing, a Microsoft lookalike domain, a brand

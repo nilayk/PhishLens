@@ -517,6 +517,47 @@ Three rules keep this from becoming a source of bugs:
 keeping the original in `raw`. A fixture is written the way the message reads, so it cannot hand
 detectors a raw value that production would never produce — in either direction.
 
+### 4.2.3 Trusted senders, without opening a spoofing hole
+
+The mechanisms above are all automatic, and none of them will ever cover the sender who is legitimately
+odd: a supplier billing from a domain unrelated to its website, a platform sending on a brand's behalf.
+Without a user-driven answer, the honest options are to keep flagging a sender the user has already
+judged, or to weaken a rule for everybody. `src/shared/trust.ts` is the third option.
+
+It is also, by some distance, the most attractive setting in the extension to an attacker. Anything that
+takes a name from a message and turns it into "score this one lower" is a target, so the feature is
+defined by four limits rather than by what it enables.
+
+**Authentication-gated.** `isSenderProven` requires Gmail's own summary to say the message passed
+authentication for that domain. Without it, trust does nothing and the card says the sender is on the list
+but the message did not prove it came from there. This is what stops the obvious attack: adding
+`supplier.example` to the list must not make a *spoofed* `supplier.example` quieter, and since PhishLens
+has no headers of its own, Gmail's verdict is the only evidence available that the domain was really used.
+
+**Identity findings are untouchable.** Only `content` and `authentication` findings can be dampened.
+Trusting `paypal.com` has no effect on `paypa1.com`, on a display name claiming PayPal from elsewhere, or
+on a punycode lookalike — which is the attack that a naive substring-matching trust list would create,
+where trusting a brand makes every imitation of it cheaper.
+
+**Bounded by severity.** `high` and `critical` findings are never dampened by user trust alone. Trust can
+move a score within a band; it cannot argue a message down from High Risk. A user who has decided a sender
+is fine is not thereby qualified to overrule the strongest evidence the engine has.
+
+**Visible and reversible.** A dampened finding stays in the list carrying its flag, the card states the
+sender is trusted and offers one-click undo, and the whole list is editable in the options page. The
+failure mode of a suppression list is that it is forgotten: someone trusts a sender, an account is
+compromised a year later, and the tool is quiet for reasons nobody remembers. Nothing here is ever removed
+from view, only softened, which keeps that from being silent.
+
+The list itself is bounded to 50 entries of at most 254 characters, each required to look like an address
+or a hostname, and normalised on read as well as write — `chrome.storage.sync` is user-writable in
+principle and the matcher should not have to defend itself.
+
+`normalizeTrustList` lives in `settings.ts` rather than `trust.ts` for an unrelated reason worth recording:
+the matcher needs `registrableDomain`, which pulls in the public suffix and TLD tables, and the popup needs
+settings. Leaving normalisation beside the matcher put the entire IANA TLD list into the popup bundle,
+doubling it to serve a page that never matches a domain.
+
 ### 4.3 The LLM can never win an argument with a rule
 
 Three structural guarantees, each unit-tested:
@@ -752,7 +793,7 @@ per-origin grant like §6's and CORS headers on the service.
 | Extracted from Gmail           | `EmailMessage` — sender, subject, body text, links, filenames | No                  |
 | Analysed locally (rules)       | `AnalysisContext`, `SecuritySignal[]` — in-memory only       | No                  |
 | Analysed locally (on-device AI) | truncated prompt → on-device model                          | No                  |
-| Persisted                      | **settings only** (`aiMode`, `highlightEnabled`, …)          | `storage.sync` only |
+| Persisted                      | settings (`aiMode`, `highlightEnabled`, …) **and the trusted-sender list** | `storage.sync` only |
 | Own model server (opt-in)      | the same truncated prompt — name, subject, body             | To that address; loopback by default |
 | Cloud-assisted (opt-in, unbuilt) | redacted `CloudAnalyzeRequest`                             | Yes — to our backend |
 
@@ -760,6 +801,10 @@ per-origin grant like §6's and CORS headers on the service.
   enabled: each needs a mode choice and an address, and the model-server mode additionally needs a
   permission grant that Chrome prompts for by origin.
 - No message body is ever persisted. No analysis result is written to `chrome.storage`.
+- **The trusted-sender list is the one exception to "nothing from a message is stored"**, and it is a
+  deliberate one: a trust decision that did not outlive the tab would be useless. It holds addresses and
+  registrable domains the user chose, nothing else — no subject, no score, no record of what was read — and
+  it is visible and editable in the options page (§4.2.3).
 - `src/shared/logger.ts` is the only logging surface. It is a no-op unless
   `__PHISHLENS_DEV__` is true (a compile-time `define`, `false` in production builds), and it
   additionally refuses to log values that look like message bodies. Production bundles contain no

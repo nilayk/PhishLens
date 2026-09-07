@@ -43,6 +43,22 @@ score's arithmetic is shown at the bottom, so a number you disagree with is a nu
 Clicking PhishLens in the Chrome toolbar tells you what it is doing right now: the verdict for the tab
 you are on, whether the AI part is working, and a link to fix it if not.
 
+### When it is wrong about someone
+
+Some senders are unusual and legitimate — a supplier billing from a different domain than their website,
+a newsletter tool sending on a brand's behalf. If PhishLens keeps flagging one, you can mark it as
+trusted from the card, and its wording and urgency findings stop counting for that sender.
+
+It is a deliberately narrow tool, because "trusted sender" is exactly the setting an attacker would want
+to reach:
+
+- It only applies when Gmail says the message really did come from that domain. A spoofed message from a
+  sender on your list is scored as though the list were empty.
+- It never silences the identity checks. If the domain is a lookalike, you still hear about it, trusted
+  or not — trusting `paypal.com` cannot make `paypa1.com` quiet.
+- Nothing disappears. Findings it dampens are still listed, marked as dampened, and the card always says
+  the sender is trusted with a one-click undo.
+
 ## How it works
 
 Most of what makes a phishing email detectable is not a matter of opinion. Whether the link that says

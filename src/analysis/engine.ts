@@ -41,6 +41,11 @@ export interface DeterministicOptions {
   config?: ScoringConfig;
   /** Injected so results are reproducible in tests. */
   now?: number;
+  /**
+   * Senders the user trusts, from settings. An argument rather than something the engine reads, which is
+   * what keeps `analysis/` free of `chrome.*` and keeps the same input producing the same result.
+   */
+  trustedSenders?: readonly string[];
 }
 
 export interface AnalyzeOptions extends DeterministicOptions {
@@ -61,7 +66,7 @@ export function analyzeDeterministic(
   options: DeterministicOptions = {},
 ): DeterministicResult {
   const config = options.config ?? DEFAULT_SCORING_CONFIG;
-  const context = buildContext(email);
+  const context = buildContext(email, { trustedSenders: options.trustedSenders });
   const signals = runRuleEngine(context);
 
   return {

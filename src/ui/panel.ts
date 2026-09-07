@@ -21,6 +21,7 @@ import type {
   SemanticStatus,
   SignalCategory,
 } from '../shared/types.js';
+import type { TrustState } from '../shared/trust.js';
 import { createShadowHost, el } from './dom.js';
 import {
   AI_DISCLAIMER,
@@ -41,11 +42,29 @@ import { PANEL_CSS } from './styles.js';
 
 const HOST_ID = 'phishlens-panel-host';
 
+/**
+ * What trust means, at the moment the user is deciding.
+ *
+ * Each says what is weighted down *and* what is not, because the honest summary of this feature is that
+ * it makes ordinary mail quieter and changes nothing about a message that is actually wrong. A `Record`
+ * keyed on the state so a new one cannot be added without wording.
+ */
+const TRUST_NOTES: Readonly<Record<Exclude<TrustState['kind'], 'none'>, (entry: string) => string>> = {
+  offer: (entry) =>
+    `If you get mail from ${entry} often, PhishLens can weight down findings about its wording — only its wording, and only while Gmail can confirm a message really came from there. Links, attachments and identity are always scored in full, and nothing is ever hidden from this card.`,
+  trusted: (entry) =>
+    `You trust ${entry}, and Gmail confirmed this message came from there, so findings about its wording are weighted down. Anything found in its links, attachments, or identity is scored in full.`,
+  unproven: (entry) =>
+    `You trust ${entry}, but Gmail could not confirm that this message actually came from there — so that trust was not applied, and this score is exactly what it would be for any other sender.`,
+};
+
 export interface PanelCallbacks {
   /** Hover/focus a finding: highlight the corresponding item in the message. */
   onFocusSignal: (signal: SecuritySignal) => void;
   onBlurSignal: () => void;
   onClose: () => void;
+  /** Add or remove a trust entry. The card only ever offers the entry it was given. */
+  onTrustChange: (entry: string, trusted: boolean) => void;
 }
 
 /**
@@ -61,6 +80,8 @@ export interface ResultView {
   aiMode: AiMode;
   email: EmailMessage;
   semantic: SemanticStatus;
+  /** Whether this sender is trusted, could be, or neither. See `shared/trust.ts`. */
+  trust: TrustState;
 }
 
 /**
@@ -168,9 +189,11 @@ export class Panel {
     const offset = scroll.scrollTop;
     if (view.kind === 'result') {
       head.replaceChildren(...this.#renderHead(view.result, view.email));
+      const trust = this.#renderTrust(view.trust);
       scroll.replaceChildren(
         this.#renderObserved(view.result),
         this.#renderAssessment(view),
+        ...(trust === null ? [] : [trust]),
         this.#renderFoot(view.result),
       );
     } else {
@@ -327,6 +350,39 @@ export class Panel {
           : note === null
             ? [el('p', { class: 'empty', text: 'The model returned no assessment for this message.' })]
             : []),
+      ],
+    });
+  }
+
+  /**
+   * The trust control, or `null` when there is nothing to say.
+   *
+   * Placed after the findings rather than beside the score for a reason: the decision it invites should
+   * be made after reading what was found, not instead of reading it. The wording states the limits of
+   * trust in the same breath as offering it, because a control whose effect a user has to guess at is
+   * how an allowlist ends up covering more than anyone intended.
+   */
+  #renderTrust(trust: TrustState): HTMLElement | null {
+    if (trust.kind === 'none') return null;
+
+    const note = TRUST_NOTES[trust.kind](trust.entry);
+    const adding = trust.kind === 'offer';
+
+    return el('section', {
+      class: 'trust',
+      children: [
+        el('h3', { class: 'section-title', text: adding ? 'Frequent sender' : 'Trusted sender' }),
+        el('p', { class: 'section-note', text: note }),
+        el('button', {
+          class: 'copy',
+          text: adding ? `Trust mail from ${trust.entry}` : `Stop trusting ${trust.entry}`,
+          attrs: { type: 'button' },
+          on: {
+            click: () => {
+              this.#callbacks.onTrustChange(trust.entry, adding);
+            },
+          },
+        }),
       ],
     });
   }

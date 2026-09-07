@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   backendBaseUrl: '',
   modelBaseUrl: '',
   modelName: '',
+  trustedSenders: Object.freeze([]),
 });
 
 export const STORAGE_KEY = 'phishlens.settings.v1';
@@ -45,6 +46,7 @@ export function normalizeSettings(raw: unknown): Settings {
     backendBaseUrl: normalizeBackendUrl(source['backendBaseUrl']),
     modelBaseUrl: normalizeModelBaseUrl(source['modelBaseUrl']),
     modelName: normalizeModelName(source['modelName']),
+    trustedSenders: normalizeTrustList(source['trustedSenders']),
   };
 }
 
@@ -112,6 +114,62 @@ export function normalizeModelBaseUrl(value: unknown): string {
     return '';
   }
 }
+
+/**
+ * Bounded because the trust list lives in `chrome.storage.sync`, which caps a single item at 8 KB shared
+ * with every other setting. Fifty is far more than the handful of senders this is for.
+ */
+export const MAX_TRUSTED_SENDERS = 50;
+
+/** RFC 5321's maximum path length. Anything longer is not an address. */
+export const MAX_ENTRY_CHARS = 254;
+
+/**
+ * Coerces a stored trust list into one that cannot surprise the matcher: lowercased, deduplicated,
+ * bounded in both length and count, and containing nothing that is neither an address nor a domain.
+ *
+ * Validated rather than trusted even though the user wrote it, because it is persisted state that syncs
+ * between installs and may have been written by an older version.
+ *
+ * Here rather than in `trust.ts` with the rest of the trust logic for the same reason as every other
+ * `normalize*` in this file: it is what makes a stored value safe to use, and this is the file the storage
+ * layer already depends on. It also keeps `trust.ts` — and the public suffix table it reaches — out of the
+ * popup bundle, which needs settings and nothing else.
+ */
+export function normalizeTrustList(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+
+  const seen = new Set<string>();
+  for (const value of raw) {
+    if (typeof value !== 'string') continue;
+    const entry = value.trim().toLowerCase();
+    if (entry === '' || entry.length > MAX_ENTRY_CHARS) continue;
+    if (!isPlausibleEntry(entry)) continue;
+    seen.add(entry);
+    if (seen.size >= MAX_TRUSTED_SENDERS) break;
+  }
+  return [...seen];
+}
+
+/**
+ * An address with one `@`, or a domain — in both cases spelled the way a hostname is spelled.
+ *
+ * Structural, rather than checked against the public suffix list: validation does not need to know which
+ * suffixes exist, because an entry naming a suffix nobody registered matches nothing, which is the same
+ * outcome as rejecting it. `matchingTrustEntry` does the real comparison.
+ */
+function isPlausibleEntry(entry: string): boolean {
+  const at = entry.indexOf('@');
+  if (at === 0 || at !== entry.lastIndexOf('@')) return false;
+  return HOSTNAME.test(at < 0 ? entry : entry.slice(at + 1));
+}
+
+/**
+ * At least two labels, each alphanumeric with interior hyphens, and a final label that starts with two
+ * letters — which rules out the bare IP addresses a trust entry could never usefully name. Anchored and
+ * bounded per label, so no input can make it expensive.
+ */
+const HOSTNAME = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2}[a-z0-9-]{0,61}$/u;
 
 /**
  * A model name is interpolated into a JSON request body, so it is bounded and stripped of control

@@ -89,6 +89,18 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ showBadgeWhenLow: false }).showBadgeWhenLow).toBe(false);
   });
 
+  /**
+   * The defaults a fresh install gets, asserted rather than described, because each is a promise the
+   * README makes on the strength of nobody having changed it.
+   */
+  it('defaults to on-device AI, no network address, and nobody trusted', () => {
+    const fresh = normalizeSettings({});
+    expect(fresh.aiMode).toBe('local');
+    expect(fresh.backendBaseUrl).toBe('');
+    expect(fresh.modelBaseUrl).toBe('');
+    expect(fresh.trustedSenders).toEqual([]);
+  });
+
   it('ignores unknown keys instead of carrying them forward', () => {
     const normalized = normalizeSettings({ aiMode: 'off', apiKey: 'sk-secret', debug: true });
     expect(Object.keys(normalized).sort()).toEqual(
@@ -99,6 +111,7 @@ describe('normalizeSettings', () => {
         'modelBaseUrl',
         'modelName',
         'showBadgeWhenLow',
+        'trustedSenders',
       ].sort(),
     );
   });

@@ -12,6 +12,7 @@
  */
 import { BRANDS, brandOwningDomain, type Brand } from '../shared/brands.js';
 import { DISPOSABLE_DOMAINS, FREEMAIL_DOMAINS } from '../shared/public-suffix.js';
+import { isSenderProven, matchingTrustEntry } from '../shared/trust.js';
 import {
   MAX_BODY_CHARS,
   emailLocalPart,
@@ -226,9 +227,31 @@ export interface AnalysisContext {
    * owns — the condition under which content heuristics get dampened.
    */
   senderAlignedWithClaim: boolean;
+
+  /**
+   * The user's trust entry covering this sender, if any — set whether or not the message's origin could
+   * be proved, so the card can distinguish "trusted" from "trusted, but this message was not verified".
+   */
+  trustedEntry: string | undefined;
+  /** Gmail's surfaces tie this message to the sender's domain. See `isSenderProven`. */
+  senderProven: boolean;
+  /**
+   * The only field the rules may read to decide that trust applies: an entry the user added *and*
+   * proof that the message came from where it says. Neither half is sufficient.
+   */
+  senderTrusted: boolean;
 }
 
-export function buildContext(email: EmailMessage): AnalysisContext {
+export interface ContextOptions {
+  /**
+   * Senders the user trusts. Passed in rather than read from storage because `analysis/` may not touch
+   * `chrome.*` — which also means the engine's behaviour stays a function of its arguments, and a test
+   * can exercise trust without a browser.
+   */
+  trustedSenders?: readonly string[];
+}
+
+export function buildContext(email: EmailMessage, options: ContextOptions = {}): AnalysisContext {
   const senderName = (email.senderName ?? '').trim();
   const senderEmail = (email.senderEmail ?? '').trim().toLowerCase();
   const senderDomain = addressDomain(senderEmail);
@@ -266,6 +289,9 @@ export function buildContext(email: EmailMessage): AnalysisContext {
 
   const priorParties = normalizeThreadParties(email.thread?.priorSenders ?? [], senderEmail);
 
+  const trustedEntry = matchingTrustEntry(options.trustedSenders ?? [], senderEmail);
+  const senderProven = isSenderProven(email.auth, senderDomain);
+
   return {
     email,
     senderName,
@@ -299,6 +325,9 @@ export function buildContext(email: EmailMessage): AnalysisContext {
     claims,
     primaryClaim,
     senderAlignedWithClaim,
+    trustedEntry,
+    senderProven,
+    senderTrusted: trustedEntry !== undefined && senderProven,
   };
 }
 

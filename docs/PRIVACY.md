@@ -29,7 +29,7 @@ Extension pages run under `script-src 'self'; object-src 'none'; base-uri 'none'
 
 If a future feature seems to need something broader, that is a signal to reconsider the feature.
 
-## The three kinds of data
+## Where data lives
 
 **Extracted from Gmail** — sender name and address, Reply-To, subject, visible body text (truncated,
 quoted replies removed), link anchor text and hrefs, attachment filenames and extensions, the delivered-to
@@ -43,6 +43,12 @@ content script for as long as the message is on screen, then is dropped. It is n
 **Analysed locally** — all of it. Every deterministic detector, the whole scoring engine, and in the
 default configuration the semantic layer run inside the tab. Nothing touches the network. Results are
 cached in the tab, capped at 20 entries, and discarded when the tab closes.
+
+**Written to `chrome.storage`** — the settings you choose, and one list that comes from a message: the
+addresses and domains you mark as trusted. That is the deliberate exception to "nothing is stored", since
+a trust decision that did not outlive the tab would be useless. The list is capped at 50 entries, each
+bounded in length and required to look like an address or a hostname, and it is visible and editable in
+the options page. Nothing else — no subject, no body, no score, no history of what you have read.
 
 **Potentially leaving the browser** — nothing by default. Two modes can send message content, and both
 require an explicit choice *and* an address, neither of which has a default value:

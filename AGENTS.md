@@ -72,6 +72,11 @@ options page on a click, so a default install keeps the two permissions the READ
 `authentication.gmail_warning` excluded — Gmail renders that banner conditionally on the folder, so a floor
 from it would make a message's score change when it is moved to Spam.
 
+**Trust cannot silence identity.** A trusted sender dampens `content` and `authentication` findings only,
+only when Gmail's summary proves the sender's domain, and never a `high` or `critical` finding. Widening any
+of the three turns the trust list into the spoofing hole it is designed not to be — trusting `paypal.com`
+must never quieten `paypa1.com`. Dampened findings stay visible and reversible; nothing is removed.
+
 **The service worker is stateless.** MV3 terminates it after ~30 seconds idle. No module-level cache, no
 model session, no in-flight work in `src/background/`. Stateful things live in the content script, whose
 context lasts as long as the tab.

@@ -210,6 +210,26 @@
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         font-size: 12px;
       }
+      .entries {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .entries li {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        margin-bottom: 6px;
+        background: var(--card);
+      }
+      .entries button {
+        padding: 4px 10px;
+        font-size: 13px;
+      }
       footer {
         margin-top: 36px;
         padding-top: 16px;
@@ -349,6 +369,18 @@
         </div>
       </fieldset>
 
+      <h2>Trusted senders</h2>
+      <p class="hint">
+        Senders you have told PhishLens you get mail from often, from the assessment card. For these,
+        findings about a message's <em>wording</em> are weighted down — and only while Gmail can confirm
+        the message really came from there. Findings about links, attachments, and who the sender is are
+        never affected, and nothing is ever hidden from the card.
+      </p>
+      <ul class="entries" id="trusted"></ul>
+      <p class="hint" id="trustedEmpty" hidden>
+        Nothing here yet. Open a message from a sender you know and the card offers the option.
+      </p>
+
       <h2>Display</h2>
       <label class="inline">
         <input type="checkbox" id="showBadgeWhenLow" />
@@ -415,7 +447,7 @@
       </p>
 
       <footer>
-        <span id="version"></span>
+        <span id="version"></span> · <a href="welcome.html">What PhishLens does</a>
       </footer>
     </main>
 

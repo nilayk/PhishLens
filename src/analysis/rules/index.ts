@@ -39,10 +39,17 @@ export function runRuleEngine(context: AnalysisContext): SecuritySignal[] {
  * text from `paypal-secure.example` (score ~70). Both contain identical social-engineering keywords;
  * only one has a verifiable sender.
  *
+ * There are two ways to be provably who you claim to be. The curated brand table proves it for the
+ * organisations in it; a user's own trust entry proves it for the rest, but only for a message Gmail
+ * could tie to that domain (`shared/trust.ts`). The second is why this stage takes the user's list at
+ * all: without it, dampening is only ever available to organisations somebody thought to enumerate.
+ *
  * Constraints, enforced here rather than by convention:
  *  - only categories in `DAMPENING.dampenableCategories` are ever touched (currently just `content`);
- *  - severity and score only ever move *down*;
- *  - a single `medium`-or-worse technical finding cancels dampening entirely.
+ *  - severity and score only ever move *down*, and no finding is ever removed;
+ *  - a single `medium`-or-worse technical finding cancels dampening entirely;
+ *  - trust alone never softens a `high` or `critical` finding, because the sender being genuine is
+ *    exactly the situation a compromised account produces.
  */
 function refine(signals: SecuritySignal[], context: AnalysisContext): SecuritySignal[] {
   const hasBlockingFinding = signals.some(
@@ -65,19 +72,32 @@ function refine(signals: SecuritySignal[], context: AnalysisContext): SecuritySi
       return link.wrappedByKnownTracker;
     });
 
-  const shouldDampen =
-    !hasBlockingFinding && senderIsVerifiedBrand && (allLinksAligned || context.webLinks.length === 0);
+  const brandDampens =
+    senderIsVerifiedBrand && (allLinksAligned || context.webLinks.length === 0);
+  /*
+   * Trust does not require every link to stay inside the sender's organisation, which brand dampening
+   * does. A verified brand's mail linking elsewhere is unusual enough to be worth noticing; an
+   * arbitrary organisation's mail linking to its payment processor, its survey tool or its own docs
+   * host is simply what mail looks like, and requiring alignment would mean the feature almost never
+   * applied. What protects this is unchanged: a link worth a `medium` finding cancels dampening.
+   */
+  const trustDampens = context.senderTrusted;
 
-  if (!shouldDampen) return signals;
+  if (hasBlockingFinding || !(brandDampens || trustDampens)) return signals;
 
   const brandLabel =
     context.primaryClaim?.brand.label ?? context.senderOwnedByBrand?.label ?? context.senderRegistrable;
 
-  const explanation = `Weighted down because this message was sent from ${context.senderRegistrable}, a domain ${brandLabel} genuinely owns, and every link in it stays within that organisation.`;
+  const explanation = brandDampens
+    ? `Weighted down because this message was sent from ${context.senderRegistrable}, a domain ${brandLabel} genuinely owns, and every link in it stays within that organisation.`
+    : `Weighted down because you trust ${context.trustedEntry ?? context.senderRegistrable} and Gmail confirmed this message really came from there.`;
 
   return signals.map((s) => {
     if (!DAMPENING.dampenableCategories.includes(s.category)) return s;
     if (s.severity === 'info') return s;
+    // A user's say-so is weaker evidence than a domain the brand table proves, so it buys less: the
+    // findings a genuine-but-compromised account would produce keep their full weight.
+    if (!brandDampens && isAtLeast(s.severity, 'high')) return s;
 
     // Combination signals are zeroed rather than merely downgraded. A combination's entire claim is
     // an inference about *intent* drawn from two themes co-occurring ("urgency plus a credential

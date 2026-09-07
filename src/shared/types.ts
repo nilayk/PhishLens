@@ -328,4 +328,12 @@ export interface Settings {
   modelBaseUrl: string;
   /** Model name to request, as that server names it. No default: there is no model we can assume. */
   modelName: string;
+  /**
+   * Senders the user has chosen to trust: addresses for shared mailbox hosts, registrable domains
+   * otherwise. See `shared/trust.ts` for what trust does and, more importantly, what it cannot do.
+   *
+   * `readonly` because it is replaced rather than mutated — the normalising helpers return new lists, and
+   * an in-place `push` would bypass the bound and the validation.
+   */
+  trustedSenders: readonly string[];
 }

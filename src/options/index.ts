@@ -23,6 +23,7 @@ import {
   normalizeBackendUrl,
   normalizeModelBaseUrl,
 } from '../shared/settings.js';
+import { withoutTrustedSender } from '../shared/trust.js';
 import type { AiMode, Settings } from '../shared/types.js';
 
 declare const __PHISHLENS_VERSION__: string;
@@ -68,6 +69,8 @@ class OptionsPage {
   readonly #connect = requireElement('connect', HTMLButtonElement);
   readonly #serverError = requireElement('serverError', HTMLParagraphElement);
   readonly #serverRemoteWarning = requireElement('serverRemoteWarning', HTMLParagraphElement);
+  readonly #trusted = requireElement('trusted', HTMLUListElement);
+  readonly #trustedEmpty = requireElement('trustedEmpty', HTMLParagraphElement);
   readonly #showBadgeWhenLow = requireElement('showBadgeWhenLow', HTMLInputElement);
   readonly #highlightEnabled = requireElement('highlightEnabled', HTMLInputElement);
   readonly #status = requireElement('status', HTMLDivElement);
@@ -153,6 +156,37 @@ class OptionsPage {
         ? 'Cloud analysis stays inactive until a valid https:// URL is set.'
         : '';
     this.#renderServerState(settings);
+    this.#renderTrusted(settings.trustedSenders);
+  }
+
+  /**
+   * The trust list, in full, with a way out of every entry.
+   *
+   * The card can only offer to stop trusting the sender of the message on screen, which is no help to
+   * someone who wants to know what they have accumulated — and an allowlist a user cannot enumerate is
+   * one they cannot audit. Entries are `textContent`, like everything else derived from a message.
+   */
+  #renderTrusted(entries: readonly string[]): void {
+    this.#trustedEmpty.hidden = entries.length > 0;
+    this.#trusted.replaceChildren(
+      ...entries.map((entry) => {
+        const name = document.createElement('code');
+        name.textContent = entry;
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = 'Stop trusting';
+        remove.addEventListener('click', () => {
+          void this.#save({
+            trustedSenders: withoutTrustedSender(this.#current.trustedSenders, entry),
+          });
+        });
+
+        const row = document.createElement('li');
+        row.append(name, remove);
+        return row;
+      }),
+    );
   }
 
   #renderServerState(settings: Settings): void {

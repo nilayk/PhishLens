@@ -55,7 +55,7 @@ src/
   popup/        the toolbar popup: verdict for the tab and AI status
   options/      settings page
   welcome/      the page shown once on install
-  shared/       types, URL/Unicode/brand primitives, settings, logging
+  shared/       types, URL/Unicode/brand primitives, settings, trust list, logging
 harness/        development-only UI harness. Not shipped.
 ```
 
@@ -93,6 +93,7 @@ each state is a link:
 ?ai=local                  local | server | cloud | off — which analyzer the card names
 ?missing=none              none | sender | subject — a part the adapter could not read. `sender`
                            withholds the score and shows the "Not checked" card; `subject` must not
+?trust=none                none | offer | trusted | unproven — the sender's trust state in the card
 ?view=full                 full (mock message) | card (card alone) | badges (one row per risk band)
 ?card=1                    open the explanation card
 ?bare=1                    hide the harness controls, for screenshots
@@ -115,7 +116,7 @@ UI change is one command away from being reflected in the README instead of sile
 
 ## Testing
 
-803 tests, all in plain Node — no Chrome, no Gmail, no network.
+846 tests, all in plain Node — no Chrome, no Gmail, no network.
 
 | File | Covers |
 | --- | --- |
@@ -130,6 +131,7 @@ UI change is one command away from being reflected in the README instead of sile
 | `test/hidden-text.test.ts` | Which inline styles count as hiding, and — mostly — which do not: this is the one scan whose output is *removed* from the body before scoring, so an over-eager rule deletes the evidence rather than finding it. |
 | `test/extraction.test.ts` | The extraction-gap rule, starting by demonstrating the danger: a thread hijack scored with its sender removed comes back **Low Risk**, because a reply-chain attack is detectable only from identity. Also that the card's wording never reassures, and that the diagnostic carries nothing from the message. |
 | `test/model-protocol.test.ts` | The OpenAI-compatible request and response shapes, and the URL policy the worker enforces before any of it is sent. |
+| `test/trust.test.ts` | Each of the four limits on trusted senders, from both sides: that trust dampens what it should, and that it does nothing at all when authentication did not prove the sender, against an identity finding, or against a `high` finding. |
 | `test/popup.test.ts` | The popup's wording for every state, and in particular that "nothing was found" and "nothing was checked" never share a phrasing. |
 
 Fixture philosophy and the both-directions assertion are described in

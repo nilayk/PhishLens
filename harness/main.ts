@@ -25,6 +25,7 @@ import type {
   SemanticAnalyzer,
   SemanticStatus,
 } from '../src/shared/types.js';
+import { trustEntryFor, type TrustState } from '../src/shared/trust.js';
 import { Badge } from '../src/ui/badge.js';
 import { el } from '../src/ui/dom.js';
 import { Panel, type PanelView } from '../src/ui/panel.js';
@@ -65,6 +66,21 @@ const BANDS: readonly Classification[] = ['low', 'caution', 'suspicious', 'high-
  * whenever anything at all is absent.
  */
 const MISSING_STATES: readonly string[] = ['none', 'sender', 'subject'];
+
+/**
+ * The trust control's states, which the card renders but the engine decides.
+ *
+ * Listed rather than derived because each depends on a combination the fixtures cannot all produce:
+ * `trusted` needs the sender in a list held in `chrome.storage`, and `unproven` needs that plus a message
+ * whose origin Gmail did not confirm. The card's own wording is what is being previewed here.
+ */
+const TRUST_STATES: readonly string[] = ['none', 'offer', 'trusted', 'unproven'];
+
+function trustFor(kind: string, email: EmailMessage): TrustState {
+  if (kind === 'none') return { kind: 'none' };
+  const entry = trustEntryFor(email.senderEmail ?? '') ?? 'northwind-supply.example';
+  return { kind: kind as Exclude<TrustState['kind'], 'none'>, entry };
+}
 
 /** The message as the adapter would have handed it over, with the unread parts genuinely absent. */
 function withoutParts(email: EmailMessage, missing: readonly MessagePart[]): EmailMessage {
@@ -245,18 +261,18 @@ const panel = new Panel({
     panel.close();
     setParam('card', '0');
   },
+  // There is no storage here, so the button moves the URL instead — which is also the only way to see
+  // what the card looks like after the click.
+  onTrustChange: (_entry, trusted) => {
+    setParam('trust', trusted ? 'trusted' : 'offer');
+  },
 });
 
 const stage = document.querySelector<HTMLElement>('#stage');
 
-async function renderFull(
-  fixture: Fixture,
-  semantic: SemanticStatus,
-  aiMode: AiMode,
-  missing: readonly MessagePart[],
-  cardOpen: boolean,
-): Promise<void> {
+async function renderFull(state: HarnessState): Promise<void> {
   if (stage === null) return;
+  const { fixture, cardOpen } = state;
   const { row, right } = headerRow(fixture.email);
 
   stage.replaceChildren(
@@ -270,7 +286,7 @@ async function renderFull(
     }),
   );
 
-  const view = await viewFor(fixture, semantic, aiMode, missing);
+  const view = await viewFor(state);
   const badge = new Badge({
     onActivate: () => {
       panel.toggle(view);
@@ -288,12 +304,9 @@ async function renderFull(
  * The card's whole input, chosen the way the controller chooses it: an unscorable extraction never
  * reaches the engine, so the harness must not build a result for one either.
  */
-async function viewFor(
-  fixture: Fixture,
-  semantic: SemanticStatus,
-  aiMode: AiMode,
-  missing: readonly MessagePart[],
-): Promise<PanelView> {
+async function viewFor(state: HarnessState): Promise<PanelView> {
+  const { fixture, semantic, aiMode, missing } = state;
+
   if (!isScorable(missing)) {
     return {
       kind: 'unreadable',
@@ -310,6 +323,7 @@ async function viewFor(
     aiMode,
     email: fixture.email,
     semantic,
+    trust: trustFor(state.trust, fixture.email),
   };
 }
 
@@ -357,17 +371,12 @@ async function renderBadges(semantic: SemanticStatus): Promise<void> {
   }
 }
 
-async function renderCardOnly(
-  fixture: Fixture,
-  semantic: SemanticStatus,
-  aiMode: AiMode,
-  missing: readonly MessagePart[],
-): Promise<void> {
+async function renderCardOnly(state: HarnessState): Promise<void> {
   if (stage === null) return;
   const frame = el('div', { class: 'card-frame' });
   stage.replaceChildren(frame);
 
-  panel.open(await viewFor(fixture, semantic, aiMode, missing));
+  panel.open(await viewFor(state));
 
   // The card is built as a child of <body>, as it is in Gmail. Moving the host into the frame leaves
   // the component itself untouched.
@@ -404,6 +413,16 @@ function flattenForStillImage(host: Element): void {
   host.shadowRoot?.append(style);
 }
 
+/** Everything the URL selects, as one value. */
+interface HarnessState {
+  fixture: Fixture;
+  semantic: SemanticStatus;
+  aiMode: AiMode;
+  missing: readonly MessagePart[];
+  trust: string;
+  cardOpen: boolean;
+}
+
 async function render(): Promise<void> {
   const params = new URLSearchParams(window.location.search);
   document.body.dataset['bare'] = params.get('bare') ?? '0';
@@ -413,19 +432,27 @@ async function render(): Promise<void> {
   const aiMode = pick(params.get('ai'), AI_MODES, 'local');
   const view = pick(params.get('view'), VIEWS, 'full');
   document.body.dataset['view'] = view;
-  const cardOpen = params.get('card') === '1';
   const missingParam = pick(params.get('missing'), MISSING_STATES, 'none');
-  const missing: readonly MessagePart[] = missingParam === 'none' ? [] : [missingParam as MessagePart];
+  const trust = pick(params.get('trust'), TRUST_STATES, 'none');
   const fixture = fixtures.find((f) => f.name === params.get('fixture')) ?? fixtures[0];
   if (fixture === undefined) return;
 
-  syncControls(fixture.name, semantic, aiMode, view, missingParam, cardOpen);
+  const state: HarnessState = {
+    fixture,
+    semantic,
+    aiMode,
+    missing: missingParam === 'none' ? [] : [missingParam as MessagePart],
+    trust,
+    cardOpen: params.get('card') === '1',
+  };
+
+  syncControls(state, view, missingParam);
 
   if (view === 'badges') await renderBadges(semantic);
   // `card` shows the card alone on an empty page. It stays pinned bottom-right as it is in Gmail, so
   // sizing the window to the card crops to it exactly without any screenshot post-processing.
-  else if (view === 'card') await renderCardOnly(fixture, semantic, aiMode, missing);
-  else await renderFull(fixture, semantic, aiMode, missing, cardOpen);
+  else if (view === 'card') await renderCardOnly(state);
+  else await renderFull(state);
 }
 
 function pick<T extends string>(value: string | null, allowed: readonly T[], fallback: T): T {
@@ -454,26 +481,20 @@ function setParam(key: string, value: string): void {
   void render();
 }
 
-function syncControls(
-  fixtureName: string,
-  semantic: SemanticStatus,
-  aiMode: AiMode,
-  view: View,
-  missing: string,
-  cardOpen: boolean,
-): void {
-  fillSelect('#fixture', fixtures.map((f) => f.name), fixtureName);
-  fillSelect('#semantic', [...SEMANTIC_STATES], semantic);
-  fillSelect('#ai', [...AI_MODES], aiMode);
+function syncControls(state: HarnessState, view: View, missing: string): void {
+  fillSelect('#fixture', fixtures.map((f) => f.name), state.fixture.name);
+  fillSelect('#semantic', [...SEMANTIC_STATES], state.semantic);
+  fillSelect('#ai', [...AI_MODES], state.aiMode);
   fillSelect('#view', [...VIEWS], view);
   fillSelect('#missing', [...MISSING_STATES], missing);
+  fillSelect('#trust', [...TRUST_STATES], state.trust);
 
   const card = document.querySelector<HTMLInputElement>('#card');
-  if (card !== null) card.checked = cardOpen;
+  if (card !== null) card.checked = state.cardOpen;
 
   const hint = document.querySelector<HTMLElement>('#hint');
-  const description = fixtures.find((f) => f.name === fixtureName)?.description;
-  if (hint !== null && description !== undefined) hint.textContent = description;
+  const description = state.fixture.description;
+  if (hint !== null) hint.textContent = description;
 }
 
 function fillSelect(selector: string, options: string[], selected: string): void {
@@ -493,6 +514,7 @@ for (const [selector, key] of [
   ['#ai', 'ai'],
   ['#view', 'view'],
   ['#missing', 'missing'],
+  ['#trust', 'trust'],
 ] as const) {
   document.querySelector<HTMLSelectElement>(selector)?.addEventListener('change', (event) => {
     const target = event.currentTarget;

@@ -23,8 +23,8 @@ import { GmailObserver, type ObserverEvent } from '../gmail/observer.js';
 import { logger } from '../shared/logger.js';
 import { isTabRequest, sendMessage, type TabResponse, type TabStatus } from '../shared/messaging.js';
 import { DEFAULT_SETTINGS } from '../shared/settings.js';
+import { trustState, withTrustedSender, withoutTrustedSender } from '../shared/trust.js';
 import type {
-  AiMode,
   AnalysisResult,
   EmailMessage,
   MessagePart,
@@ -98,6 +98,9 @@ export class Controller {
       },
       onClose: () => {
         this.#panel.close();
+      },
+      onTrustChange: (entry, trusted) => {
+        void this.#changeTrust(entry, trusted);
       },
     });
 
@@ -192,7 +195,9 @@ export class Controller {
     // The deterministic result is rendered first and is complete on its own. If a semantic analyzer
     // is available, the score is then refined. This ordering means the user is never waiting on a
     // model for a verdict, and an unavailable model is invisible rather than a failure state.
-    const { context: _context, ...deterministic } = analyzeDeterministic(event.email);
+    const { context: _context, ...deterministic } = analyzeDeterministic(event.email, {
+      trustedSenders: this.#settings.trustedSenders,
+    });
     this.#applyResult(deterministic, token, aiMode === 'off' ? 'off' : 'pending');
 
     if (aiMode === 'off') return;
@@ -205,7 +210,12 @@ export class Controller {
         this.#settings,
         deterministic.signals.map((s) => s.id),
       );
-      const refined = await analyze(event.email, analyzer, { signal: refinement.signal });
+      // The same options as above, not just the signal: `analyze` re-runs the deterministic pass, and
+      // omitting the trust list here would make the score climb back up the moment the model answered.
+      const refined = await analyze(event.email, analyzer, {
+        signal: refinement.signal,
+        trustedSenders: this.#settings.trustedSenders,
+      });
       this.#remember(event.signature, refined);
       this.#applyResult(refined, token, refined.meta.semanticStatus ?? 'no-output');
     } catch (error) {
@@ -246,8 +256,27 @@ export class Controller {
     // shown: a refinement that lands on "low" hides the badge, and returning early there used to leave
     // the card displaying the score it had just superseded.
     if (this.#panel.isOpen) {
-      this.#panel.open(viewOf(active, result, this.#settings.aiMode));
+      this.#panel.open(viewOf(active, result, this.#settings));
     }
+  }
+
+  /**
+   * Adds or removes a trust entry, then re-scores what is on screen.
+   *
+   * Written through the worker like every other setting, so the bound and the validation in
+   * `normalizeTrustList` apply. The re-score is not just a repaint: trust changes what the rule engine
+   * does, so the cache is dropped and the message is analysed again — a user who clicks this expects the
+   * number to move, and a card that keeps its old score looks like the click did nothing.
+   */
+  async #changeTrust(entry: string, trusted: boolean): Promise<void> {
+    const next = trusted
+      ? withTrustedSender(this.#settings.trustedSenders, entry)
+      : withoutTrustedSender(this.#settings.trustedSenders, entry);
+
+    logger.debug('trust changed', { trusted, entries: next.length });
+    await sendMessage({ type: 'SET_SETTINGS', patch: { trustedSenders: next } });
+    // `chrome.storage.onChanged` fires for this write too, and `#reloadSettings` is what re-runs the
+    // analysis. Doing it here as well would analyse the same message twice.
   }
 
   #teardownView(): void {
@@ -357,7 +386,7 @@ export class Controller {
     if (active === null) return null;
     if (!isScorable(active.missing)) return this.#unreadableView(active);
     if (active.result === null) return null;
-    return viewOf(active, active.result, this.#settings.aiMode);
+    return viewOf(active, active.result, this.#settings);
   }
 
   /**
@@ -403,18 +432,39 @@ export class Controller {
     this.#settings = await loadSettings();
     logger.debug('settings reloaded', { aiMode: this.#settings.aiMode });
 
-    // Changing AI mode invalidates every cached result, since the llm contribution differs.
-    if (previous.aiMode !== this.#settings.aiMode) {
+    // Both of these change what an analysis would produce, so every cached result is stale: the AI mode
+    // changes the llm contribution, and the trust list changes the dampening the rule engine applies.
+    const aiChanged = previous.aiMode !== this.#settings.aiMode;
+    const trustChanged = !sameEntries(previous.trustedSenders, this.#settings.trustedSenders);
+
+    if (aiChanged || trustChanged) {
       this.#cache.clear();
-      this.#warmModel();
+      if (aiChanged) this.#warmModel();
       this.#observer.refresh();
     }
   }
 }
 
 /** The result is passed separately so this cannot be called before there is one to render. */
-function viewOf(active: ActiveView, result: AnalysisResult, aiMode: AiMode): PanelView {
-  return { kind: 'result', result, aiMode, email: active.email, semantic: active.semantic };
+function viewOf(active: ActiveView, result: AnalysisResult, settings: Settings): PanelView {
+  return {
+    kind: 'result',
+    result,
+    aiMode: settings.aiMode,
+    email: active.email,
+    semantic: active.semantic,
+    trust: trustState(
+      settings.trustedSenders,
+      active.email.senderEmail ?? '',
+      active.email.auth,
+      result.classification,
+    ),
+  };
+}
+
+/** Order-insensitive comparison, since the trust list is a set stored as an array. */
+function sameEntries(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((entry) => b.includes(entry));
 }
 
 /** Reads settings via the worker, falling back to defaults if it is mid-restart. */
