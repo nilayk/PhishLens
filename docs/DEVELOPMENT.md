@@ -35,6 +35,11 @@ npm run verify       # lint && typecheck && test — the gate before committing
 The icons in `dist/icons/` are generated at build time by `scripts/gen-icons.mjs` rather than committed as
 binaries, so no opaque blob ships in a repository whose whole value is being auditable.
 
+One generated *source* file is committed instead: `src/shared/tlds.ts`, the list of top-level domains IANA
+has delegated, refreshed by hand with `node scripts/gen-tlds.mjs`. It is not part of the build, because a
+build that reaches the network cannot be reproduced offline and a detection rule whose input changes
+silently between builds is one nobody can review. Refreshing it is a visible diff.
+
 ## Project layout
 
 ```text
@@ -107,18 +112,19 @@ UI change is one command away from being reflected in the README instead of sile
 
 ## Testing
 
-719 tests, all in plain Node — no Chrome, no Gmail, no network.
+773 tests, all in plain Node — no Chrome, no Gmail, no network.
 
 | File | Covers |
 | --- | --- |
 | `test/aggregate.test.ts` | The scoring functions in isolation: per-severity ceilings, category caps, `[0, 100]` clamping, and zero contribution from an empty category, which is the "no local model" path. |
-| `test/detection.test.ts` | The full pipeline against 19 fixtures, invariants across all of them, and which message in a thread gets picked — including the forged-from-yourself cases that must *not* be skipped. |
+| `test/detection.test.ts` | The full pipeline against 20 fixtures, invariants across all of them, and which message in a thread gets picked — including the forged-from-yourself cases that must *not* be skipped. |
 | `test/semantic.test.ts` | The containment guarantees, the calibration limits, and the unavailable / throwing / hanging / cancelled analyzer paths — including which status each reports and which may be cached. |
 | `test/chrome-prompt.test.ts` | The on-device adapter against fakes for every API shape Chrome has shipped and every malformed shape it might, plus concurrency: a session fake that rejects overlapping prompts the way the real one does. |
 | `test/url.test.ts` | Obfuscated IP forms, forged suffix boundaries, redirect chains, hostnames `new URL()` accepts but that cannot exist. |
 | `test/unicode.test.ts` | Punycode decoding, script mixing, bidi tricks, confusable folding, bounded edit distance. |
 | `test/privacy.test.ts` | Settings validation, the model-server URL policy from both directions (loopback `http:` yes, anything else no), and what `buildCloudPayload` **drops** as well as what it keeps. |
 | `test/observer.test.ts` | The SPA observer's emit and suppress decisions in both directions, since every negative decision it makes is silent by design. |
+| `test/hidden-text.test.ts` | Which inline styles count as hiding, and — mostly — which do not: this is the one scan whose output is *removed* from the body before scoring, so an over-eager rule deletes the evidence rather than finding it. |
 | `test/extraction.test.ts` | The extraction-gap rule, starting by demonstrating the danger: a thread hijack scored with its sender removed comes back **Low Risk**, because a reply-chain attack is detectable only from identity. Also that the card's wording never reassures, and that the diagnostic carries nothing from the message. |
 
 Fixture philosophy and the both-directions assertion are described in

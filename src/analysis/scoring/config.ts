@@ -223,6 +223,15 @@ export const DETECTION_TUNING = Object.freeze({
    * because a single odd word (`McDonald`, a deliberate stylisation) is not a pattern.
    */
   minScrambledCaseTokens: 2,
+  /**
+   * Characters of CSS-hidden body text that stop being a preheader and become concealment.
+   *
+   * Set by what legitimate senders do, not by what attackers do. Every mail platform hides a preheader
+   * line to control the inbox preview, and those run to a couple of hundred characters at most, spacer
+   * padding excluded — so 600 sits far above ordinary practice while remaining far below the thousands of
+   * characters of filler prose that make the technique worth using.
+   */
+  minHiddenBodyChars: 600,
 });
 
 /**

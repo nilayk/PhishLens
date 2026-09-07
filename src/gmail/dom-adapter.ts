@@ -24,12 +24,14 @@ import type {
   EmailAuthInfo,
   EmailLink,
   EmailMessage,
+  HiddenText,
   MessagePart,
   RawFields,
   ThreadParticipant,
 } from '../shared/types.js';
 import { normalizeDomain, parseUrl } from '../shared/url.js';
 import type { Extraction, MailAdapter, MessageHandle } from './adapter.js';
+import { countContentChars, findHiddenSubtrees } from './hidden-text.js';
 import { SELECTORS, queryAll, queryAllUnion, queryFirst } from './selectors.js';
 
 /** Upper bound on links extracted from one message. A hostile message can contain thousands. */
@@ -131,7 +133,7 @@ export class GmailDomAdapter implements MailAdapter {
 
   extract(handle: MessageHandle): Extraction {
     const sender = attempt('sender', () => extractSender(handle.root), {});
-    const bodyText = attempt('body', () => extractBodyText(handle.bodyElement), '');
+    const body = attempt('body', () => extractBody(handle.bodyElement), { text: '' });
     const auth = attempt<EmailAuthInfo | undefined>('auth', () => extractAuth(handle.root), undefined);
     const raw = attempt<RawFields>('raw', () => {
       const original = rawSubject();
@@ -152,7 +154,8 @@ export class GmailDomAdapter implements MailAdapter {
       ...(sender.replyTo !== undefined ? { replyTo: sender.replyTo } : {}),
       ...(sender.recipient !== undefined ? { recipientEmail: sender.recipient } : {}),
       subject: attempt('subject', () => extractSubject(), ''),
-      bodyText,
+      bodyText: body.text,
+      ...(body.hidden !== undefined ? { hiddenText: body.hidden } : {}),
       links: attempt('links', () => extractLinks(handle.bodyElement), []),
       attachments: attempt('attachments', () => extractAttachments(handle.root), []),
       ...(auth !== undefined ? { auth } : {}),
@@ -547,24 +550,38 @@ function rawSubject(): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Visible body text with quoted history removed.
+ * Visible body text with quoted history removed, and separately whatever CSS keeps off screen.
  *
- * The body element is cloned before the quoted blocks are stripped, so Gmail's live DOM is never
- * modified. This costs a shallow clone per analysis and is worth it: mutating Gmail's own nodes risks
- * breaking its event handlers, which the brief explicitly rules out.
+ * The body element is cloned before anything is removed, so Gmail's live DOM is never modified. This
+ * costs a shallow clone per analysis and is worth it: mutating Gmail's own nodes risks breaking its event
+ * handlers, which the brief explicitly rules out.
+ *
+ * Hidden subtrees are removed from the text rather than left in it. `textContent` does not care whether
+ * CSS put something out of view, so hidden filler would otherwise sit inside the string the content rules
+ * match against, diluting them in exactly the way it is meant to dilute a spam filter. See `HiddenText`.
  */
-function extractBodyText(bodyElement: Element | null): string {
-  if (bodyElement === null) return '';
+function extractBody(bodyElement: Element | null): { text: string; hidden?: HiddenText } {
+  if (bodyElement === null) return { text: '' };
 
   const clone = bodyElement.cloneNode(true) as Element;
   for (const quoted of queryAllUnion(clone, SELECTORS.quotedContent)) {
     quoted.remove();
   }
-  for (const hidden of queryAll(clone, ['style', 'script', '[aria-hidden="true"]'])) {
-    hidden.remove();
+  for (const nonContent of queryAll(clone, ['style', 'script'])) {
+    nonContent.remove();
   }
 
-  return truncate(normalizeBodyWhitespace(clone.textContent), MAX_BODY_CHARS);
+  const scan = findHiddenSubtrees(clone);
+  let chars = 0;
+  for (const element of scan.roots) {
+    chars += countContentChars(element.textContent);
+    element.remove();
+  }
+
+  return {
+    text: truncate(normalizeBodyWhitespace(clone.textContent), MAX_BODY_CHARS),
+    ...(chars > 0 ? { hidden: { chars, techniques: scan.techniques } } : {}),
+  };
 }
 
 /** Collapses runs of blank lines while keeping paragraph structure readable for the excerpts. */
@@ -740,13 +757,32 @@ const PLACEMENT_NOTICE =
 const SECURITY_VERDICT =
   /\b(be careful|seems dangerous|dangerous|suspicious|spoof|phishing|not verify|could not verify|impersonat|caution|fraud)\b/iu;
 
+/**
+ * Gmail's `via <host>` annotation, which it prints beside the sender when the sending host is not the
+ * From domain.
+ *
+ * The details table is tried first because Gmail generates that row itself. The header line is the
+ * fallback, and it is read with the **display name removed**: the name is the one part of that line a
+ * sender chooses, so a message from `"Acme via acme.example" <x@evil.example>` could otherwise nominate
+ * its own `via` value and, by matching its own domain, suppress the finding this exists to produce.
+ *
+ * Message bodies are excluded for the same reason, and more urgently — `queryFirst` on a header selector
+ * can land inside quoted content in a threaded view.
+ */
 function readVia(root: Element): string | undefined {
-  const header = collapseWhitespace(queryFirst(root, SELECTORS.senderTextual)?.textContent ?? '');
-  const match = /\bvia\s+([\w.-]+\.[a-z]{2,})/iu.exec(header);
-  if (match?.[1] !== undefined) return normalizeDomain(match[1]);
-
   const row = extractDetailRows(root).get('via');
-  return row === undefined ? undefined : normalizeDomain(stripToDomain(row));
+  if (row !== undefined) return normalizeDomain(stripToDomain(row));
+
+  const block = queryFirst(root, SELECTORS.senderHeaderBlock);
+  if (block === null) return undefined;
+
+  const clone = block.cloneNode(true) as Element;
+  for (const authored of queryAllUnion(clone, [...SELECTORS.senderSpan, ...SELECTORS.body])) {
+    authored.remove();
+  }
+
+  const match = /\bvia\s+([\w-]+(?:\.[\w-]+)+)/iu.exec(collapseWhitespace(clone.textContent));
+  return match?.[1] === undefined ? undefined : normalizeDomain(match[1]);
 }
 
 /** `"example.com"` / `"user@example.com"` / `"example.com (verified)"` → `example.com`. */

@@ -1,0 +1,36 @@
+{
+  "name": "storage-quota-bucket-page",
+  "description": "Modelled on a real message the engine originally scored 30/100 (caution) on a single content finding. Every deliberate choice in it defeats a different rule: the display name is spelled in mathematical sans-serif so no ASCII pattern matches it, the From domain sits under a TLD that does not exist, the payload is an HTML file in a public Google Cloud Storage bucket so the destination host is impeccable, the body forges a green 'trusted sender' notice, and 2,784 characters of unrelated prose sit inside an <object style=\"display:none\"> to dilute the ratio of suspicious wording — which also diluted our own content rules, since bodyText came from textContent. An unsubscribe line and a link named 'unsubscribe' bought it the bulk-mail suppression on top. Recipient and sender labels invented, bucket and relay host renamed; storage.googleapis.com is kept because it is the finding. The service the message impersonates is unnamed in the original too: 'Cloud Secure Inc.' is the attacker's invention, not a real correspondent.",
+  "email": {
+    "senderName": "\ud835\udde3aym\ud835\uddf2nt_Declin\ud835\uddf2d",
+    "senderEmail": "alert-5096@qmbvx.ldk",
+    "recipientEmail": "alex.morgan@gmail.com",
+    "subject": "We've blocked your account! 🚫 Your photos and videos will be deleted on Sun, 06 Sep 2026 19:34:44 +0000 ⚠️ Renew your subscription for free now!",
+    "bodyText": "- This message was sent from a trusted sender.\n\nCloud Storage Alert - Critical\n\nYour Storage Plan Needs Attention\n\nCRITICAL STORAGE ALERT\n\nStorage Limit Reached\n\nYour Cloud storage has reached critical limit\n\nDear alex.morgan,\n\nYour Cloud storage is currently 97% full. You have only 0.4 GB left. Your account is at risk of being locked, and your files may be permanently deleted.\n\nYOUR DATA IS AT RISK\n\nYour storage sync has been paused. Files will be deleted if you don't upgrade.\n\nStorage Usage\nUsed: 242.6 GB\nLeft: 0.4 GB\nPhotos & Videos: Full\nDocuments & Files: Full\nEmails & Attachments: Full\nDevice Backups: Almost Full\nFamily Sharing: Full\n\nRENEW NOW\n\nAccount: alex.morgan\nEmail: alex.morgan@gmail.com\nExpiration Date: Sun, 06 Sep 2026 19:34:44 +0000\nPlan: 250 GB\nStatus: Expired\n\n2026 Cloud Secure Inc. All rights reserved. This message was sent to alex.morgan@gmail.com because you have a Cloud Secure account.\n\nunsubscribe\n\nclick here to remove yourself from our emails list",
+    "hiddenText": {
+      "chars": 2784,
+      "techniques": ["display:none"]
+    },
+    "auth": {
+      "via": "mx7.one.relay0036.driftmarket.biz.ua"
+    },
+    "links": [
+      {
+        "text": "Cloud Storage",
+        "href": "https://storage.googleapis.com/strdrv-9f2/strw_v3.html#?act=cl&pid=29178_md&uid=4&vid=1870572&ofid=452"
+      },
+      {
+        "text": "RENEW NOW",
+        "href": "https://storage.googleapis.com/strdrv-9f2/strw_v3.html#?act=cl&pid=29178_md&uid=4&vid=1870572&ofid=452&lid=347"
+      },
+      {
+        "text": "unsubscribe",
+        "href": "https://storage.googleapis.com/strdrv-9f2/strw-v1-cl1.html#?act=un&pid=29178_md&uid=4&vid=1870572&ofid=452"
+      },
+      {
+        "text": "here",
+        "href": "https://storage.googleapis.com/strdrv-9f2/strw-v1-cl1.html#?act=oop&pid=29178_md&uid=4&vid=1870572&ofid=452"
+      }
+    ]
+  }
+}

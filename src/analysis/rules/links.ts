@@ -459,7 +459,7 @@ function credentialTermsOnUnrelatedDomain(context: AnalysisContext): SecuritySig
           severity: 'high',
           score: 26,
           title: 'Sign-in link is hosted on a free hosting service',
-          description: `The link leads to a sign-in or verification page at ${link.hostname}, a subdomain of ${openHosting}. Anyone can create a site there in seconds, so the address carries no indication of who is actually behind the page.`,
+          description: `The link leads to a sign-in or verification page ${describeOpenHost(link.hostname, openHosting)}. Anyone can publish there in seconds, so the address carries no indication of who is actually behind the page.`,
           evidence: { url: link.link.href, value: link.hostname },
         }),
       );
@@ -467,6 +467,82 @@ function credentialTermsOnUnrelatedDomain(context: AnalysisContext): SecuritySig
   }
   return limit(findings);
 }
+
+/**
+ * Wording for an open host, which is either a tenant subdomain or the storage service itself.
+ *
+ * Worth branching on: calling `storage.googleapis.com` "a subdomain of storage.googleapis.com" is the
+ * kind of sentence that makes a reader stop trusting the whole explanation.
+ */
+function describeOpenHost(hostname: string, openHosting: string): string {
+  return hostname === openHosting
+    ? `on ${openHosting}, where the page is stored as a file`
+    : `at ${hostname}, a subdomain of ${openHosting}`;
+}
+
+/**
+ * The link opens a web page that is a **file in a public storage bucket** rather than a page on
+ * anybody's website.
+ *
+ * This is the shape that defeats every other link rule at once, and it is now the common one. The
+ * destination is `storage.googleapis.com`, `s3.amazonaws.com` or a sibling: a real domain, owned by
+ * Google or Amazon, with valid HTTPS and no lookalike spelling, no shortener, no redirect and no
+ * punycode. Nothing about the *host* is wrong. What is wrong is that the host identifies the storage
+ * provider and not the author — anyone with an account can upload `page.html` and serve it from an
+ * address that reads as impeccable, which is precisely why phishing kits are hosted this way.
+ *
+ * Two conditions keep it off ordinary mail. The path must name an **HTML document**, because that is what
+ * separates a page pretending to be a website from the legitimate uses of object storage, which are
+ * images, PDFs and downloads. And the escalation to `high` requires the *message* to be asking for
+ * something — a sign-in, an unlock, a renewal, a payment — since a bare link to a hosted document is
+ * unremarkable while the same link under "your account will be deleted" is the whole attack.
+ */
+function pageServedFromOpenStorage(context: AnalysisContext): SecuritySignal[] {
+  const findings: SecuritySignal[] = [];
+  const asking =
+    CREDENTIAL_LINK_TERMS.test(context.matchText) || ACCOUNT_ACTION_TERMS.test(context.matchText);
+
+  for (const link of context.webLinks) {
+    const openHosting = link.openHosting;
+    if (openHosting === null || link.onSenderDomain) continue;
+    if (!HTML_DOCUMENT_PATH.test(link.target?.pathname ?? '')) continue;
+
+    // A sign-in page on an open host is the same link described better by
+    // `credentialTermsOnUnrelatedDomain`, which can say what the page asks for. Two findings about one
+    // link, differing only in wording, spend the reader's attention twice for one fact.
+    const pathAndQuery = `${link.target?.pathname ?? ''} ${link.target?.search ?? ''}`;
+    if (
+      CREDENTIAL_LINK_TERMS.test(link.anchorText) ||
+      CREDENTIAL_LINK_TERMS.test(pathAndQuery)
+    ) {
+      continue;
+    }
+
+    findings.push(
+      signal({
+        id: `link.page_in_open_storage.${String(link.index)}`,
+        category: 'link',
+        severity: asking ? 'high' : 'medium',
+        score: asking ? 26 : 16,
+        title: 'Link opens a page stored as a file on a public hosting service',
+        description: `The link goes to a web page held as a file on ${openHosting}. The address belongs to the storage provider, not to whoever wrote the page: anyone with an account can upload a file there and it will be served from that domain. A real organisation publishes pages on its own site${asking ? ', and this message is asking you to act on one' : ''}.`,
+        evidence: { url: link.link.href, value: link.hostname, text: link.link.text },
+      }),
+    );
+  }
+  return limit(findings);
+}
+
+/** A path whose last segment is an HTML document, i.e. a page rather than an asset or a download. */
+const HTML_DOCUMENT_PATH = /\.(html?|shtml|xhtml|php|asp|aspx|jsp)$/iu;
+
+/**
+ * Wording that makes a message a demand for action on an account, beyond the credential vocabulary in
+ * `CREDENTIAL_LINK_TERMS`. Subscription and billing language belongs here rather than there: "renew your
+ * subscription" is not a sign-in request, and it puts the same pressure behind the same click.
+ */
+const ACCOUNT_ACTION_TERMS =
+  /\b(renew|renewal|reactivate|upgrade|subscription|billing|invoice|payment (declined|failed|method)|past due|storage (is )?(full|limit)|out of (storage|space)|will be (deleted|removed|suspended|closed)|update your (payment|billing|card))\b/u;
 
 /**
  * A destination whose TLD is also a common file extension, so the address reads as a filename.
@@ -535,6 +611,7 @@ const linkDetectors: Detect[] = [
   malformedLinks,
   excessiveSubdomains,
   credentialTermsOnUnrelatedDomain,
+  pageServedFromOpenStorage,
   filenameLookalikeTldLinks,
   linkOnlyBody,
 ] as const;

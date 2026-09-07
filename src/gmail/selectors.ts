@@ -49,6 +49,17 @@ export const SELECTORS = {
   senderTextual: ['.gD', '.go', '.qu .gD'],
 
   /**
+   * The header block holding the sender line — display name, address, and the annotations Gmail adds
+   * beside them, of which `via <host>` is the one detection reads.
+   *
+   * Needed as its own selector because those annotations are *siblings* of the sender element, not
+   * inside it: reading the sender element's text gets the display name and nothing else. Widest-first
+   * here, unlike everywhere else in this file, because the point is to capture the whole line rather
+   * than to locate one node.
+   */
+  senderHeaderBlock: ['.gE.iv.gt', 'table.cf.gJ', '.gE', '.iw', '.hb'],
+
+  /**
    * Anything in a message header that names a party by address — sender and recipient chips alike.
    *
    * Attribute-based on purpose. Which classes Gmail uses for the recipient row has changed repeatedly,

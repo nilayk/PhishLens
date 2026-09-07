@@ -10,6 +10,7 @@ import {
   decodeIdnHost,
   editDistance,
   hasBidiOrInvisible,
+  hasStyledLetterforms,
   hasSuspiciousScriptMixing,
   isConfusableWith,
   punycodeDecodeLabel,
@@ -198,5 +199,53 @@ describe('editDistance', () => {
 
   it('is symmetric', () => {
     expect(editDistance('microsoft', 'rnicrosoft', 5)).toBe(editDistance('rnicrosoft', 'microsoft', 5));
+  });
+});
+
+/**
+ * Unicode publishes a bold alphabet for mathematicians, and phishing uses it because a name spelled in it
+ * renders normally and matches nothing. The characters below are the real ones, pasted rather than named,
+ * because the entire failure mode is that they look identical to what they are not.
+ */
+describe('hasStyledLetterforms', () => {
+  it('finds mathematical alphabets, whatever the style', () => {
+    expect(hasStyledLetterforms('\u{1d5e3}aym\u{1d5f2}nt_Declin\u{1d5f2}d')).toBe(true); // sans-serif bold
+    expect(hasStyledLetterforms('\u{1d400}\u{1d401}\u{1d402}')).toBe(true); // bold serif
+    expect(hasStyledLetterforms('\u{1d4d0}ccount')).toBe(true); // bold script
+    expect(hasStyledLetterforms('\u{1d59f}illing')).toBe(true); // fraktur
+    expect(hasStyledLetterforms('\u{1d670}\u{1d671}')).toBe(true); // monospace
+  });
+
+  it('finds the letterlike symbols that predate those blocks', () => {
+    expect(hasStyledLetterforms('\u2102loud Storage')).toBe(true); // double-struck C
+    expect(hasStyledLetterforms('\u211brenda')).toBe(true); // script R
+  });
+
+  /**
+   * The false-positive direction is the one that matters: ordinary international mail is full of accents,
+   * currency symbols, emoji and trademark marks, and none of them are letter substitutes.
+   */
+  it('does not fire on text people actually write', () => {
+    for (const text of [
+      'Payment Declined',
+      'Zo\u00eb M\u00fcller',
+      '\u041c\u0438\u0445\u0430\u0438\u043b \u041f\u0435\u0442\u0440\u043e\u0432',
+      '\u5c71\u7530\u592a\u90ce',
+      'Kestrel Coffee \u2615',
+      'ACME\u2122 Billing \u2014 \u00a349.99',
+      '',
+    ]) {
+      expect(hasStyledLetterforms(text), text).toBe(false);
+    }
+  });
+
+  /**
+   * NFKC folds these to plain letters, which is what `normalizeForMatching` relies on to read the claim a
+   * styled name is making. Asserted here because that is the property, not an implementation detail.
+   */
+  it('describes text that NFKC flattens to ASCII', () => {
+    const styled = '\u{1d5e3}aym\u{1d5f2}nt';
+    expect(hasStyledLetterforms(styled)).toBe(true);
+    expect(styled.normalize('NFKC')).toBe('Payment');
   });
 });

@@ -75,6 +75,30 @@ export interface ThreadContext {
   priorSenders: ThreadParticipant[];
 }
 
+/**
+ * Text the message body contains but keeps off screen with CSS.
+ *
+ * Two distinct reasons this is extracted rather than ignored.
+ *
+ * It is **evidence**: filler that only a filter reads is evasion, and at volume it is the recognisable
+ * shape of corpus poisoning — paragraphs of unrelated prose that dilute the ratio of suspicious words to
+ * ordinary ones.
+ *
+ * It is also **an attack on this extension**. `bodyText` is read from `textContent`, which includes text
+ * CSS has hidden, so hidden filler lands in the string the content rules match against and dilutes them
+ * exactly as it dilutes anyone else's. Separating it restores `bodyText` to what it claims to be — what
+ * the reader sees — and turns the filler from a blind spot into a finding.
+ *
+ * A small amount is ordinary: nearly every marketing platform hides a one-line preheader this way. The
+ * threshold that separates the two lives in `scoring/config.ts`.
+ */
+export interface HiddenText {
+  /** Letters and digits held off screen. Whitespace and invisible padding are not counted. */
+  chars: number;
+  /** The CSS techniques found, e.g. `display:none`, `opacity:0`. De-duplicated and bounded. */
+  techniques: string[];
+}
+
 export interface EmailMessage {
   senderName?: string;
   senderEmail?: string;
@@ -82,6 +106,8 @@ export interface EmailMessage {
   subject?: string;
   /** Visible body text only. Never HTML. Truncated by the adapter. */
   bodyText: string;
+  /** Body text CSS keeps off screen, when there was any. Excluded from `bodyText`. */
+  hiddenText?: HiddenText;
   links: EmailLink[];
   attachments: EmailAttachment[];
   auth?: EmailAuthInfo;

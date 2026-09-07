@@ -22,14 +22,20 @@ export function collapseWhitespace(text: string): string {
 
 /**
  * Canonical form for keyword matching: bounded length, whitespace-collapsed, lowercased, with
- * zero-width characters removed and typographic punctuation folded to ASCII.
+ * decorative letterforms folded to plain letters, zero-width characters removed, and typographic
+ * punctuation folded to ASCII.
  *
- * The last two matter because patterns are written in plain ASCII: `pass\u200bword` and `don’t` would
- * otherwise slip past a rule spelling them the obvious way. Letter-spacing (`p a s s w o r d`) is *not*
- * flattened here — that is `skeleton()`'s job, and it is applied where brand claims are matched.
+ * All of that matters because patterns are written in plain ASCII: `𝗽𝗮𝘀𝘀𝘄𝗼𝗿𝗱`, `ｐａｓｓｗｏｒｄ`,
+ * `pass\u200bword` and `don’t` would otherwise each slip past a rule spelling them the obvious way.
+ *
+ * NFKC rather than NFKD for the fold: both map mathematical and fullwidth letters onto ASCII, but NFKD
+ * would also decompose `café` into `cafe` plus a combining accent, leaving stray marks in text that is
+ * shown to the reader as evidence. Letter-spacing (`p a s s w o r d`) is *not* flattened here — that is
+ * `skeleton()`'s job, and it is applied where brand claims are matched.
  */
 export function normalizeForMatching(text: string): string {
   return collapseWhitespace(truncate(text, MAX_BODY_CHARS))
+    .normalize('NFKC')
     .toLowerCase()
     .replace(/[\u200b-\u200f\u2060\ufeff\u00ad]/gu, '')
     .replace(/[\u2018\u2019\u201b\u2032]/gu, "'")

@@ -149,6 +149,15 @@ export interface AnalysisContext {
   email: EmailMessage;
 
   senderName: string;
+  /**
+   * The display name folded for keyword matching, with decorative letterforms flattened to ASCII and
+   * `.`/`_` treated as the separators they are.
+   *
+   * Rules that ask *what a name claims* must read this and not `senderName`, which is kept verbatim for
+   * evidence. A name spelled `𝗣aym𝗲nt_Declin𝗲d` claims exactly what `payment declined` claims, and the
+   * whole reason it is spelled that way is that a pattern written in ASCII does not match it.
+   */
+  senderNameMatch: string;
   senderEmail: string;
   senderDomain: string;
   senderRegistrable: string;
@@ -260,6 +269,9 @@ export function buildContext(email: EmailMessage): AnalysisContext {
   return {
     email,
     senderName,
+    // Separators become spaces before folding, so a word can still be required to stand alone: `\b`
+    // treats `_` as part of a word, which is enough to hide `payment` inside `payment_declined`.
+    senderNameMatch: normalizeForMatching(senderName.replace(/[._]+/gu, ' ')),
     senderEmail,
     senderDomain,
     senderRegistrable,

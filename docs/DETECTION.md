@@ -25,10 +25,26 @@ or local part rather than the registrable domain, and display names claiming an 
 domain has nothing to do with. The last of these needs no brand table, which is what keeps the category
 working for the insurer or council that no curated list contains.
 
+Two further identity checks are about the sender being *unaccountable* rather than imitating anyone. A From
+domain whose top-level domain IANA has never delegated cannot resolve, cannot receive a reply, and cannot
+have been registered by anybody, so the address was constructed rather than mistyped. Reserved names
+(`.local`, `.internal`, `.corp`) are excluded from that and reported as misconfiguration, since an internal
+appliance sending mail under its own hostname is common and innocent. Separately, a display name spelled in
+Unicode's mathematical alphabets — `𝗣aym𝗲nt` rather than `Payment` — renders normally to a reader while
+matching nothing that checks it against a list, and there is no other reason to address mail that way. Such
+a name is also folded to plain letters before the content rules read it, so the substitution stops hiding
+what the name claims.
+
 **Links** (`links.ts`) — anchor text that names one destination while the href goes to another, the
 registrable domain buried behind a convincing prefix (`login.microsoftonline.com.session-verify.net`),
 raw and obfuscated IP addresses, punycode hosts, shorteners, redirect chains and redirect parameters
 carrying a second URL, credential-related wording pointing at an unrelated domain, and non-web schemes.
+
+Also here: a page served out of public object storage. `https://storage.googleapis.com/…/renew.html` has a
+genuine Google hostname and a flawless certificate, and every part of the URL a reader is taught to check
+is correct — but the bucket belongs to whoever paid for it, so the domain vouches for the storage provider
+and not for the page. Only documents count. Object storage exists to serve images, PDFs and downloads, and
+reporting those would fire on a large share of ordinary mail.
 
 **Attachments** (`attachments.ts`) — executable and script types, macro-enabled documents, archives,
 double extensions, and right-to-left override characters used to make `invoice⁧fdp.exe` read as a PDF.
@@ -51,6 +67,13 @@ organisation: unlike the brand rules, nothing here enumerates which domains a co
 **Content** (`content.ts`) — requests to sign in or confirm credentials, payment and bank-detail changes,
 gift cards, manufactured urgency and consequence, and the structural tells of a lure (a body that is
 nothing but a link, a subject padded to hide its real text).
+
+Two of the tells are about a message manipulating its own reading rather than what it asks for. A body that
+vouches for itself — "this message was sent from a trusted sender" — is forging a verdict, because that
+sentence belongs to a mail provider and no real sender writes it. And a body carrying hundreds of
+characters of unrelated prose hidden with CSS is diluting the ratio of suspicious wording to innocent
+wording that a statistical filter measures. The threshold sits far above the preheader line nearly every
+bulk sender hides, so ordinary marketing does not reach it.
 
 **Authentication** (`authentication.ts`) — SPF, DKIM and DMARC results, and Gmail's own warning banner,
 as far as Gmail exposes them in the page. There is no access to raw headers.
@@ -112,7 +135,9 @@ mechanisms exist purely to keep legitimate mail at zero.
   the AI verdict, so a softened finding cannot be used to license a score elsewhere.
 - **Bulk-mail shape.** Newsletters have many links across many domains and would otherwise trip
   link-heavy heuristics. Recognising the shape suppresses the heuristics that assume person-to-person
-  mail.
+  mail. The suppression is withdrawn when the body conceals prose with CSS: bulk shape is cheap to forge —
+  an unsubscribe line buys it — and concealed filler is not something a real newsletter does, so a message
+  that pads itself no longer gets the benefit of the doubt it was engineering to claim.
 - **Sender-domain redirects.** Newsletter platforms rewrite every link through their own redirector while
   the anchor text names the real destination, which is exactly the pattern the strongest link rule looks
   for. Links whose host is on the *sender's own registrable domain* are exempt from the mismatch and
@@ -128,13 +153,15 @@ plausible.
 
 ## Confidence in the numbers
 
-674 tests run the real pipeline in plain Node — no Chrome, no Gmail, no network. The corpus in
-`test/fixtures/` holds 19 messages: a plain legitimate message, a legitimate password reset, a legitimate
+773 tests run the real pipeline in plain Node — no Chrome, no Gmail, no network. The corpus in
+`test/fixtures/` holds 20 messages: a plain legitimate message, a legitimate password reset, a legitimate
 reply into an existing thread, a newsletter with many links, a newsletter whose links are all rewritten
 through its platform's click tracker, an invoice, PayPal phishing, a Microsoft lookalike domain, a brand
 spoof from an unlisted lead-generation sender, an anchor-URL mismatch, a punycode link, an IP-address URL,
 a ZIP attachment, an executable attachment, a gift-card scam, a fake payroll change, an MFA-code request,
-and two reply-chain hijacks — one by a lookalike domain, one reusing a participant's name.
+two reply-chain hijacks — one by a lookalike domain, one reusing a participant's name — and a storage-quota
+lure built so that every field has an innocent answer, which is the fixture that documents the most about
+how the categories interact.
 
 Fixtures store what a human would write down — anchor text, href, filename — and the loader derives
 `normalizedDomain` and `extension` using the same helpers the Gmail adapter uses. If fixtures hard-coded
@@ -151,6 +178,10 @@ See [DEVELOPMENT.md](DEVELOPMENT.md) for what each test file covers and how to r
   only apply to listed brands.
 - **The public suffix list is a pragmatic subset** (`src/shared/public-suffix.ts`), not the full PSL. It
   covers common multi-label suffixes; an unusual one may be misparsed at the registrable boundary.
+- **The TLD list is a snapshot** (`src/shared/tlds.ts`, refreshed with `node scripts/gen-tlds.mjs`), because
+  nothing here may perform DNS on data from a message. A top-level domain delegated after the snapshot
+  reads as nonexistent. Delegations are rare and the consequence is bounded: that finding can raise a
+  message to suspicious, never to high risk on its own.
 - **English-centric content heuristics.** Social-engineering patterns are English. Non-English phishing is
   caught by identity, link and attachment signals but not content ones.
 - **Authentication is second-hand.** No raw headers means no Received chain analysis and reliance on

@@ -12,6 +12,7 @@ import {
   domainLabels,
   hasPunycode,
   hasRedirectParam,
+  hasUnknownTld,
   isDangerousScheme,
   isIpHost,
   isKnownTrackingRedirector,
@@ -217,6 +218,54 @@ describe('domain reputation lists', () => {
     expect(openHostingSuffix('example.com')).toBeNull();
   });
 
+  /**
+   * Object stores are open hosting where the tenant is a *path* segment, so the hostname is the suffix
+   * rather than something under it. Missing this is how a phishing page on `storage.googleapis.com`
+   * reads as a Google URL: the domain is genuinely Google's, and only the bucket is the stranger's.
+   */
+  it('identifies object stores, where the host itself is the open one', () => {
+    expect(openHostingSuffix('storage.googleapis.com')).toBe('storage.googleapis.com');
+    expect(openHostingSuffix('my-bucket.s3.amazonaws.com')).toBe('s3.amazonaws.com');
+    expect(openHostingSuffix('raw.githubusercontent.com')).toBe('githubusercontent.com');
+  });
+
+  it('does not mistake the rest of a provider for its object store', () => {
+    expect(openHostingSuffix('googleapis.com')).toBeNull();
+    expect(openHostingSuffix('accounts.google.com')).toBeNull();
+    expect(openHostingSuffix('console.aws.amazon.com')).toBeNull();
+  });
+});
+
+/**
+ * `isMalformedHost` asks whether a TLD is *shaped* like one; this asks whether it exists. The distinction
+ * earns its keep on names an attacker picks precisely because they look unremarkable — `.ldk` passes
+ * every structural test there is and has simply never been delegated to anyone.
+ */
+describe('hasUnknownTld', () => {
+  it('recognises the TLDs mail actually arrives from', () => {
+    for (const host of [
+      'example.com', 'bbc.co.uk', 'mail.gov.au', 'shop.berlin', 'a.museum', 'x.io',
+      'köln.de', 'президент.рф', 'xn--80akhbyknj4f.xn--p1ai',
+    ]) {
+      expect(hasUnknownTld(host), host).toBe(false);
+    }
+  });
+
+  it('rejects TLDs that were never delegated', () => {
+    for (const host of ['qmbvx.ldk', 'mail.corp', 'server.local', 'thing.zzz', 'a.xn--zzzzzz']) {
+      expect(hasUnknownTld(host), host).toBe(true);
+    }
+  });
+
+  /**
+   * A bare hostname has no TLD to judge, and an address literal has no TLD at all. Both must be someone
+   * else's finding, or every internal relay in existence becomes a fabricated sender.
+   */
+  it('declines to judge what has no TLD', () => {
+    for (const host of ['localhost', 'mailserver', '', '192.168.1.1', '[::1]']) {
+      expect(hasUnknownTld(host), host).toBe(false);
+    }
+  });
 });
 
 describe('unwrapRedirects', () => {

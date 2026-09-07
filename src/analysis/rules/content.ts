@@ -13,6 +13,7 @@
  */
 import type { SecuritySignal, Severity } from '../../shared/types.js';
 import { excerpt, firstMatch, formatList } from '../../shared/text.js';
+import { hasStyledLetterforms } from '../../shared/unicode.js';
 import type { AnalysisContext } from '../context.js';
 import { DETECTION_TUNING } from '../scoring/config.js';
 import { signal } from './types.js';
@@ -443,6 +444,12 @@ function matchThemes(context: AnalysisContext): ThemeMatch[] {
  * trips, while leaving every link and identity finding intact.
  */
 function looksLikeBulkMail(context: AnalysisContext): boolean {
+  // A message that pads itself with text the reader cannot see is not the legitimate marketing this
+  // suppression protects, and the suppression is cheap for an attacker to earn: an unsubscribe line and a
+  // link named "unsubscribe" is the entire cost. Concealed filler withdraws the benefit of the doubt.
+  const hidden = context.email.hiddenText?.chars ?? 0;
+  if (hidden >= DETECTION_TUNING.minHiddenBodyChars) return false;
+
   const unsubscribe =
     /\b(unsubscribe|opt[- ]out|manage (your )?(email )?preferences|update (your )?preferences|email preferences|no longer wish to receive|stop receiving|view (this|it) (email )?in (your )?browser|sent to you because|you are receiving this)\b/u.test(
       context.matchText,
@@ -527,8 +534,8 @@ function genericSalutationWithBrandClaim(context: AnalysisContext): SecuritySign
 /**
  * The subject is formatted to get past text-based filtering rather than to be read.
  *
- * A real example: `NILAY KHANDELWAL ❋ WELCOME TO YOUR FIDELITY ❋ LIFE QUOTE PLANS!❋ - A2QJZ**`. None
- * of these markers is conclusive alone — marketing shouts, and emoji in subject lines are ordinary —
+ * The shape, as it appears in real mail: `<RECIPIENT NAME> ❋ WELCOME TO YOUR ❋ QUOTE PLANS!❋ - A2QJZ**`.
+ * None of these markers is conclusive alone — marketing shouts, and emoji in subject lines are ordinary —
  * so a signal is only raised when several coincide, and the severity follows how many.
  *
  * This is a formatting judgement about the envelope, not about meaning, which is why it is a rule and
@@ -550,6 +557,10 @@ function subjectObfuscation(context: AnalysisContext): SecuritySignal[] {
   if (decorative !== null) markers.push(`the decorative character "${decorative}" used as a separator`);
 
   if (hasOpaqueCode(subject)) markers.push('an opaque tracking code');
+
+  // Reads the subject as delivered, not the folded `matchText`, since the whole point is that these are
+  // not the letters they appear to be.
+  if (hasStyledLetterforms(subject)) markers.push('letters replaced by decorative substitutes');
 
   if (markers.length < DETECTION_TUNING.minSubjectObfuscationMarkers) return [];
 
@@ -638,6 +649,72 @@ function hasOpaqueCode(subject: string): boolean {
   return false;
 }
 
+/**
+ * The message asserts its own trustworthiness.
+ *
+ * "This message was sent from a trusted sender", in the body, styled as a green-bordered system notice.
+ * The claim is impersonation of a different kind from a spoofed display name: it imitates the *mail
+ * client*, borrowing the authority of the one party in the exchange the reader has no reason to doubt.
+ *
+ * Safe to state plainly because the reasoning is airtight in both directions. No mail client puts its
+ * verdict inside the message — a verdict from the message it is judging would be worthless — so any such
+ * sentence was written by the sender. And a genuine sender has no reason to write it: an organisation the
+ * reader already deals with does not open by insisting it is trustworthy.
+ *
+ * Anchored on the sender asserting *safety about this message*, not on the word "trusted" or "verified"
+ * appearing. "You can trust us with your data" and "verified by our security team" are marketing;
+ * "this email has been scanned and is safe" is a forged verdict.
+ */
+function forgedTrustAssurance(context: AnalysisContext): SecuritySignal[] {
+  const hit = firstMatch(context.matchText, FORGED_ASSURANCE);
+  if (hit === null) return [];
+
+  return [
+    signal({
+      id: 'content.forged_trust_assurance',
+      category: 'content',
+      severity: 'medium',
+      score: 22,
+      title: 'Message declares itself safe',
+      description:
+        'The body contains a statement that the message is trusted, verified, or has passed a security check. Notices of that kind come from your mail provider and appear outside the message; anything inside it was written by the sender, about itself. Genuine correspondence does not need to vouch for itself, and a reader who reads this as a system message has been given a verdict by the party being judged.',
+      evidence: { text: excerpt(context.matchText, hit.index, hit.match.length) },
+    }),
+  ];
+}
+
+const FORGED_ASSURANCE =
+  /\b(this (e-?mail|message|sender) (was|has been|is)\b[^.!?]{0,30}\b(sent from a )?(trusted|verified|authenticated|safe|secure|scanned|checked)|(sent|comes) from a (trusted|verified|known|safe) (sender|source|domain)|(verified|trusted|authenticated) (sender|by (gmail|google|outlook|microsoft|your (mail|email) provider))|(scanned|checked) (for|by)\b[^.!?]{0,30}\b(virus|malware|threat)es?\b[^.!?]{0,20}\b(none|clean|safe|no threats?) found|no (virus|malware|threats?) (were |was )?(found|detected)|(this|the) (message|e-?mail) is (safe|legitimate|genuine|not (spam|phishing)))\b/u;
+
+/**
+ * The body carries a quantity of text that CSS keeps off screen.
+ *
+ * A little is ordinary: nearly every marketing platform hides a one-line preheader to control what the
+ * inbox preview shows, which is why this is a *volume* test and not a technique test. Past the threshold
+ * it is no longer a preheader — it is the filter-evasion pattern of pasting paragraphs of unrelated prose
+ * into a message so that the ratio of suspicious wording to ordinary wording comes out looking innocent.
+ *
+ * The extension is one of the systems that dilutes, which is why the extraction separates this text
+ * rather than merely noticing it. See `HiddenText`.
+ */
+function hiddenBodyText(context: AnalysisContext): SecuritySignal[] {
+  const hidden = context.email.hiddenText;
+  if (hidden === undefined || hidden.chars < DETECTION_TUNING.minHiddenBodyChars) return [];
+
+  const how = hidden.techniques.length > 0 ? ` using ${formatList(hidden.techniques)}` : '';
+  return [
+    signal({
+      id: 'content.hidden_body_text',
+      category: 'content',
+      severity: 'medium',
+      score: 22,
+      title: 'Message contains a large amount of text you cannot see',
+      description: `About ${String(hidden.chars)} characters of the body are hidden from view${how}. Senders hide a single line to control the inbox preview; text at this length is there to be read by filters rather than by you, and padding a message with unrelated prose is how the proportion of suspicious wording in it is made to look ordinary.`,
+      evidence: { value: `${String(hidden.chars)} hidden characters` },
+    }),
+  ];
+}
+
 export function detectContentSignals(context: AnalysisContext): SecuritySignal[] {
   const themes = matchThemes(context);
   return [
@@ -646,6 +723,8 @@ export function detectContentSignals(context: AnalysisContext): SecuritySignal[]
     ...genericSalutationWithBrandClaim(context),
     ...subjectObfuscation(context),
     ...subjectPadding(context),
+    ...forgedTrustAssurance(context),
+    ...hiddenBodyText(context),
   ];
 }
 

@@ -47,9 +47,22 @@ export const MULTI_LABEL_SUFFIXES: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Hosting suffixes where anyone can obtain a subdomain in seconds. A hostname under one of these is
- * not inherently malicious — plenty of real products live here — but it means the domain carries no
- * identity, which matters when the page is asking for credentials.
+ * Hosts where anyone can publish in seconds. A page under one of these is not inherently malicious —
+ * plenty of real products live here — but the address says nothing about who wrote the page, which is
+ * what matters when the page is asking for credentials.
+ *
+ * Two shapes, matched by the same `host === suffix || host.endsWith('.' + suffix)` test:
+ *
+ *  - **Suffixes**, where the tenant gets a subdomain: `victim-login.pages.dev`.
+ *  - **Whole hosts**, where the tenant gets a *path*: `storage.googleapis.com/<bucket>/page.html`.
+ *    These are the ones worth being careful about, because the visible domain belongs to Google,
+ *    Amazon or Microsoft and reads as impeccable. That is precisely why phishing kits are served from
+ *    them, and the reason a suffix-only list had a hole exactly where the most reputable-looking
+ *    addresses are.
+ *
+ * A curated subset, like the rest of this file. Regional forms that cannot be expressed as a suffix
+ * (`s3.eu-west-1.amazonaws.com`, `objectstorage.<region>.oraclecloud.com`) are not covered; the
+ * alternative is matching `amazonaws.com` wholesale, which would flag every service AWS hosts.
  */
 export const OPEN_HOSTING_SUFFIXES: readonly string[] = [
   'web.app', 'firebaseapp.com', 'pages.dev', 'workers.dev', 'r2.dev', 'trycloudflare.com',
@@ -61,6 +74,10 @@ export const OPEN_HOSTING_SUFFIXES: readonly string[] = [
   'duckdns.org', 'no-ip.org', 'hopto.org', 'serveo.net', 'localtunnel.me',
   '000webhostapp.com', 'infinityfreeapp.com', 'freehostia.com', 'byethost.com',
   'sharepoint-online.com', 'my-sharepoint.com',
+  // Object stores: the bucket is a path segment, so the hostname itself is the open host.
+  'storage.googleapis.com', 'firebasestorage.googleapis.com', 's3.amazonaws.com',
+  'r2.cloudflarestorage.com', 'digitaloceanspaces.com', 'backblazeb2.com', 'wasabisys.com',
+  'storage.yandexcloud.net', 'githubusercontent.com', 'dropboxusercontent.com',
 ];
 
 /** Consumer mailbox providers. A sender here cannot legitimately *be* a corporation. */

@@ -156,6 +156,31 @@ export function hasBidiOrInvisible(text: string): boolean {
   return BIDI_AND_INVISIBLE.test(text);
 }
 
+/**
+ * Letters from Unicode's mathematical alphabets — the block that exists so a mathematician can write a
+ * bold variable, and that spam uses to write `𝗣aym𝗲nt` in a form no text rule matches.
+ *
+ * Deliberately *not* folded away and forgotten. `skeleton()` normalises these to plain letters, which is
+ * right for comparison and throws away the observation: a sender whose name is spelled in mathematical
+ * sans-serif has taken trouble to be unreadable to software while looking ordinary to a person, and that
+ * intent is itself the finding.
+ *
+ * The second alternative covers the holes in the block. Unicode did not duplicate characters it already
+ * had, so the script and fraktur alphabets are missing letters that live in Letterlike Symbols
+ * (`ℋ`, `ℎ`, `ℝ`) — a spammer spelling a whole word needs them, so a rule that ignored them would miss
+ * the words most likely to be spelled this way. They are enumerated rather than taken as a range because
+ * the same block holds `™`, `№` and `℃`, which appear in ordinary display names.
+ *
+ * Fullwidth Latin is not included even though it is equally decorative here: it is the normal way to
+ * write Latin letters in Japanese text, and `skeleton()` already folds it for comparison.
+ */
+const STYLED_LETTERFORMS =
+  /[\u{1d400}-\u{1d7ff}]|[ℂℊℋℌℍℎℐℑℒℓℕℙℚℛℜℝℤℨℬℭℯℰℱℳℴ℘ⅅⅆⅇⅈⅉ]/u;
+
+export function hasStyledLetterforms(text: string): boolean {
+  return STYLED_LETTERFORMS.test(text);
+}
+
 export function stripBidiAndInvisible(text: string): string {
   return text.replace(new RegExp(BIDI_AND_INVISIBLE, 'gu'), '');
 }

@@ -11,16 +11,19 @@ import type { SecuritySignal } from '../../shared/types.js';
 import {
   domainCore,
   hasPunycode,
+  hasUnknownTld,
   isIpHost,
   isKnownTrackingRedirector,
   isMalformedHost,
   normalizeDomain,
   sameRegistrableDomain,
+  tldOf,
 } from '../../shared/url.js';
 import {
   decodeIdnHost,
   editDistance,
   hasBidiOrInvisible,
+  hasStyledLetterforms,
   hasSuspiciousScriptMixing,
   scriptsUsed,
   skeleton,
@@ -228,8 +231,90 @@ function senderDomainUnicodeSpoofing(context: AnalysisContext): SecuritySignal[]
     );
   }
 
+  if (hasStyledLetterforms(context.senderName)) {
+    signals.push(
+      signal({
+        id: 'identity.styled_display_name',
+        category: 'identity',
+        severity: 'medium',
+        score: 18,
+        title: 'Sender name is spelled with decorative letter substitutes',
+        description: `The name "${context.senderName}" is not written in ordinary letters. It uses characters from Unicode's mathematical alphabet, which render as bold or italic text but are different characters underneath — so the name reads normally to you and matches nothing to any system checking it against a list. There is no reason to address mail this way other than to avoid being checked.`,
+        evidence: { text: context.senderName },
+      }),
+    );
+  }
+
   return signals;
 }
+
+/**
+ * The sender's domain sits under a top-level domain that does not exist.
+ *
+ * The most conclusive thing a string on its own can say about a sender. `alert@example.ldk` cannot
+ * resolve, cannot be registered and cannot receive a reply, because IANA has never delegated `.ldk` to
+ * anybody — so the From address is not a mistyped address, it is a fabricated one. It needs no brand
+ * table, no reputation data and no lookalike comparison, which is what makes it hold against a sender who
+ * has thought about every one of those.
+ *
+ * `critical`, on the same standard as `lookalike_sender_domain`, and for a stronger reason: a near-miss
+ * domain could conceivably belong to an unrelated company that happens to be spelled that way, while a
+ * name under an undelegated TLD cannot belong to anyone at all.
+ *
+ * **The two ways this can be wrong, and what is done about each.** `IANA_TLDS` is a committed snapshot,
+ * because nothing here may perform DNS — so a TLD delegated after it was taken reads as nonexistent until
+ * `scripts/gen-tlds.mjs` is run. And private-use names (`.local`, `.corp`) are undelegated *by design*;
+ * mail from one is a misconfigured appliance far more often than an attack, so it is reported separately
+ * and softly rather than as a fabrication.
+ */
+function nonexistentSenderTld(context: AnalysisContext): SecuritySignal[] {
+  const domain = context.senderDomain;
+  if (domain === '' || isIpHost(domain)) return [];
+  if (!hasUnknownTld(domain)) return [];
+
+  const tld = tldOf(domain);
+
+  if (PRIVATE_USE_TLDS.has(tld)) {
+    return [
+      signal({
+        id: 'identity.private_use_sender_tld',
+        category: 'identity',
+        severity: 'medium',
+        score: 14,
+        title: `Sender's domain ends in ".${tld}", which is not a public domain`,
+        description: `".${tld}" is reserved for private networks and is deliberately not registered on the public internet, so ${domain} cannot be verified and a reply to it would not arrive. This is usually an internal system sending mail with its local hostname rather than a real domain, but it also means nothing about this sender can be checked.`,
+        evidence: { value: domain },
+      }),
+    ];
+  }
+
+  return [
+    signal({
+      id: 'identity.nonexistent_sender_tld',
+      category: 'identity',
+      // `high`, not `critical`, and the distinction is about the snapshot rather than the message. The
+      // observation is conclusive — no mail can come from a TLD that was never delegated — but it is only
+      // as current as `IANA_TLDS`, and `critical` floors the score at high risk. That would let one aging
+      // list hand a high-risk verdict to a legitimate sender under a newly delegated TLD, on its own, with
+      // nothing else wrong. At `high` the same staleness tops out at suspicious, which is a defensible
+      // reading of a sender that cannot be checked, and a real phish supplies its own corroboration.
+      severity: 'high',
+      score: 34,
+      title: `Sender's domain ends in ".${tld}", which is not a real top-level domain`,
+      description: `The message claims to come from ${domain}, but ".${tld}" has never been assigned to anyone. No domain can be registered under it and nothing can resolve it, so this address cannot receive a reply and identifies no sender. A From address that does not exist was constructed rather than typed wrong.`,
+      evidence: { value: domain },
+    }),
+  ];
+}
+
+/**
+ * Names reserved for private networks, plus the ones RFC 2606 and RFC 6761 set aside for documentation
+ * and testing. Undelegated on purpose, so their absence from `IANA_TLDS` says nothing about intent.
+ */
+const PRIVATE_USE_TLDS: ReadonlySet<string> = new Set([
+  'local', 'localhost', 'localdomain', 'lan', 'home', 'internal', 'intranet', 'corp', 'private',
+  'test', 'example', 'invalid', 'onion', 'alt', 'i2p',
+]);
 
 /**
  * The sender's domain is structurally implausible: an IP literal, a bare label, or a hostname that
@@ -373,7 +458,7 @@ function externalExecutiveClaim(context: AnalysisContext): SecuritySignal[] {
 
   const execPattern =
     /\b(ceo|cfo|coo|cto|chief executive|chief financial|managing director|president|vice president|vp of|head of finance|chairman|founder)\b/u;
-  const nameOrSubject = `${context.senderName} ${context.subject}`.toLowerCase();
+  const nameOrSubject = `${context.senderNameMatch} ${context.subject}`.toLowerCase();
   if (!execPattern.test(nameOrSubject) && !execPattern.test(context.matchText.slice(0, 500))) return [];
 
   return [
@@ -410,9 +495,9 @@ function unsupportedOrganizationalClaim(context: AnalysisContext): SecuritySigna
   // consumer mailbox — the single most important case this rule exists to catch.
   if (context.senderOwnedByBrand !== undefined && !context.senderIsFreemail) return [];
   if (isKnownTrackingRedirector(context.senderDomain)) return [];
-  if (!ORGANISATION_MARKER.test(context.senderName.toLowerCase())) return [];
+  if (!ORGANISATION_MARKER.test(context.senderNameMatch)) return [];
 
-  const nameTokens = organisationNameTokens(context.senderName);
+  const nameTokens = organisationNameTokens(context.senderNameMatch);
   if (nameTokens.length === 0) return [];
 
   const domainTokens = senderDomainTokens(context.senderDomain);
@@ -428,7 +513,7 @@ function unsupportedOrganizationalClaim(context: AnalysisContext): SecuritySigna
   // legitimately sends "… Team" mail from Gmail, and flagging that `high` would trip the severity
   // floor and report ordinary mail as suspicious.
   const institutional =
-    context.senderIsFreemail && INSTITUTIONAL_MARKER.test(context.senderName.toLowerCase());
+    context.senderIsFreemail && INSTITUTIONAL_MARKER.test(context.senderNameMatch);
 
   return [
     signal({
@@ -659,6 +744,7 @@ const identityDetectors: Detect[] = [
   replyToMismatch,
   senderDomainUnicodeSpoofing,
   malformedSenderDomain,
+  nonexistentSenderTld,
   brandInWrongPosition,
   disposableSender,
   suspiciousSenderSubdomainStructure,

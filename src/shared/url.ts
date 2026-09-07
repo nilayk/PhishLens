@@ -12,6 +12,7 @@ import {
   URL_SHORTENERS,
 } from './public-suffix.js';
 import { emailDomain } from './text.js';
+import { IANA_TLDS } from './tlds.js';
 
 /** Schemes we consider "web navigation". */
 const WEB_SCHEMES = new Set(['http:', 'https:']);
@@ -102,6 +103,49 @@ export function subdomainOf(hostname: string): string {
 export function tldOf(hostname: string): string {
   const labels = domainLabels(hostname);
   return labels.length > 0 ? (labels[labels.length - 1] ?? '') : '';
+}
+
+/**
+ * True when the hostname's TLD is not one IANA has delegated — i.e. the name cannot exist.
+ *
+ * Distinct from `isMalformedHost`, which asks whether a TLD is *shaped* like one. `.ldk` passes that
+ * test and is still not a place mail can come from.
+ *
+ * Returns `false` for anything where the question does not apply — an empty host, an IP literal, a
+ * single-label name, a name that cannot be reduced to the ASCII form the list is written in — so a caller
+ * gets "this TLD does not exist" and not "there was no TLD to check". Both are absences; only one is
+ * evidence.
+ */
+export function hasUnknownTld(hostname: string): boolean {
+  const ascii = asciiHost(hostname);
+  if (ascii === null) return false;
+
+  const labels = domainLabels(ascii);
+  if (labels.length < 2) return false;
+  const tld = labels[labels.length - 1] ?? '';
+  return tld !== '' && !IANA_TLDS.has(tld);
+}
+
+/**
+ * A host in the ASCII form IANA publishes its list in, or `null` if it has none.
+ *
+ * `.рф` is delegated; `xn--p1ai` is how it is written down. Comparing the Unicode spelling against the
+ * list would report every internationalised domain in the world as nonexistent, so the conversion is
+ * mandatory rather than defensive — and a host that will not convert must be nobody's finding, since the
+ * alternative is a fabricated-sender verdict drawn from our own inability to parse a name.
+ *
+ * Deliberately not folded into `normalizeDomain`: that value is compared against brands and shown as
+ * evidence, and rewriting a legitimate `президент.рф` to punycode there would both mangle the display and
+ * trip `hasPunycode`, whose entire premise is that the *sender* chose that encoding.
+ */
+function asciiHost(hostname: string): string | null {
+  if (!/[^\u0000-\u007f]/u.test(hostname)) return hostname;
+  try {
+    const converted = new URL(`http://${hostname}`).hostname;
+    return /[^\u0000-\u007f]/u.test(converted) ? null : converted;
+  } catch {
+    return null;
+  }
 }
 
 /**

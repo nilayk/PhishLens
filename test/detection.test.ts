@@ -7,13 +7,20 @@
 import { describe, expect, it } from 'vitest';
 import { buildContext } from '../src/analysis/context.js';
 import type { ThreadParty } from '../src/analysis/context.js';
-import { analyzeDeterministic } from '../src/analysis/engine.js';
+import { analyze, analyzeDeterministic } from '../src/analysis/engine.js';
+import { CATEGORY_WEIGHTS } from '../src/analysis/scoring/config.js';
 import { findParticipantLookalike } from '../src/analysis/rules/thread.js';
 import { __testables as contentTestables } from '../src/analysis/rules/content.js';
 import { __testables as adapterTestables } from '../src/gmail/dom-adapter.js';
 import { isCaseScrambled, repeatedUnitCount } from '../src/analysis/rules/identity.js';
 import { severityFloor } from '../src/analysis/scoring/aggregate.js';
-import type { AnalysisResult, EmailMessage, SecuritySignal } from '../src/shared/types.js';
+import type {
+  AnalysisResult,
+  EmailMessage,
+  SecuritySignal,
+  SemanticAnalysis,
+  SemanticAnalyzer,
+} from '../src/shared/types.js';
 import { loadFixture, loadAllFixtures, toEmailLink } from './fixtures/load.js';
 
 const LEGITIMATE_FIXTURES = [
@@ -39,6 +46,7 @@ const MALICIOUS_FIXTURES = [
   'brand-spoof-leadgen',
   'thread-hijack-lookalike',
   'thread-hijack-name-reuse',
+  'storage-quota-bucket-page',
 ];
 
 const FIXED_NOW = 1_760_000_000_000;
@@ -1118,6 +1126,232 @@ describe('subject formatting markers', () => {
       { now: FIXED_NOW },
     );
     expect(hasSignal(shouting, 'content.subject_obfuscation')).toBe(false);
+  });
+});
+
+/**
+ * A phish built so that every individual check has an innocent answer.
+ *
+ * Worth a section of its own because it is the case the engine was worst at, and because each finding
+ * below is paired with the reason the corresponding *legitimate* shape stays quiet. The whole design of
+ * this message is that no single field is wrong: the sending domain resolves nowhere but is spelled
+ * plausibly, the destination host belongs to Google, the display name reads as English, and the body
+ * carries a working unsubscribe line. It originally scored 30/100 on one content finding.
+ */
+describe('phishing that is innocent one field at a time', () => {
+  const result = analyzeFixture('storage-quota-bucket-page');
+  const base = loadFixture('storage-quota-bucket-page').email;
+
+  /** A plausible on-device reading of this message: confident, and naming concerns the checks also found. */
+  const MODEL_VERDICT: SemanticAnalysis = {
+    risk: 80,
+    confidence: 0.9,
+    categories: ['credential_phishing', 'social_engineering'],
+    reasons: ['Threatens deletion of personal files unless a subscription is renewed immediately.'],
+    source: 'local',
+  };
+
+  const fixedAnalyzer = (analysis: SemanticAnalysis): SemanticAnalyzer => ({
+    id: 'fixed',
+    isAvailable: () => Promise.resolve(true),
+    analyze: () => Promise.resolve(analysis),
+  });
+
+  it('reaches the top of the suspicious band on deterministic findings alone', () => {
+    expect(result.classification).toBe('suspicious');
+    expect(result.score).toBeGreaterThanOrEqual(65);
+    expect(result.categoryScores.llm).toBe(0);
+  });
+
+  /**
+   * Why it stops short of high risk without the model, and why that is the intended shape rather than a
+   * gap. Three of the six categories are already saturated at their weights — identity, links and content
+   * all scored more than they are allowed to contribute — so further findings in them cannot raise the
+   * total. The remaining headroom is authentication, and Gmail's interface exposed none of it here beyond
+   * the relay host. The model's capped 15 then carries the message over 75, which is exactly the division
+   * of labour intended: a refinement on top of a score the checks earned, never a verdict of its own.
+   */
+  it('crosses into high risk once a corroborated model verdict is added', async () => {
+    const withModel = await analyze(base, fixedAnalyzer(MODEL_VERDICT), { now: FIXED_NOW });
+
+    expect(withModel.categoryScores.llm).toBe(CATEGORY_WEIGHTS.llm);
+    expect(withModel.classification).toBe('high-risk');
+  });
+
+  describe('a From domain under a TLD that does not exist', () => {
+    it('is reported as fabricated rather than merely odd', () => {
+      const finding = signalFor(result, 'identity.nonexistent_sender_tld');
+      expect(finding?.description).toContain('never been assigned');
+    });
+
+    /**
+     * Deliberately `high` and not `critical`, and the reason is about the list rather than the message.
+     * The observation is conclusive, but it is only as current as the committed IANA snapshot, and
+     * `critical` floors the score at high risk — which would let one aging file hand a high-risk verdict
+     * to a legitimate sender under a newly delegated TLD with nothing else wrong. At `high` that same
+     * staleness tops out at suspicious.
+     */
+    it('cannot on its own produce a high-risk verdict, because the list ages', () => {
+      const onlyFinding = analyzeDeterministic({
+        senderName: 'Accounts',
+        senderEmail: 'noreply@northwind-supply.ldk',
+        subject: 'Your statement is ready',
+        bodyText: 'Your monthly statement is attached to your account area, as usual. Thank you.',
+        links: [],
+        attachments: [],
+      });
+
+      expect(ids(onlyFinding)).toEqual(['identity.nonexistent_sender_tld']);
+      expect(onlyFinding.classification).toBe('suspicious');
+      expect(severityFloor(onlyFinding.signals)).toBeLessThan(75);
+    });
+
+    it('says nothing about a domain under a real TLD, however obscure', () => {
+      for (const domain of ['qmbvx.ldk', 'example.museum', 'shop.co.za', 'mail.xn--p1ai']) {
+        const scored = analyzeDeterministic({ ...base, senderEmail: `alert@${domain}` });
+        expect(hasSignal(scored, 'identity.nonexistent_sender_tld')).toBe(domain === 'qmbvx.ldk');
+      }
+    });
+
+    /**
+     * `.local` and friends are undelegated *by design*, so their absence from the snapshot is not
+     * evidence of anything. Mail from one is an internal appliance using its own hostname far more often
+     * than it is an attack, and reporting that as a fabricated sender would be both wrong and, at
+     * `critical`, loud.
+     */
+    it('treats a private-use name as misconfiguration, not fabrication', () => {
+      const internal = analyzeDeterministic({ ...base, senderEmail: 'backup@fileserver.local' });
+
+      expect(hasSignal(internal, 'identity.nonexistent_sender_tld')).toBe(false);
+      expect(signalFor(internal, 'identity.private_use_sender_tld')?.severity).toBe('medium');
+    });
+  });
+
+  describe('a display name spelled in mathematical letterforms', () => {
+    it('is reported, and explains that it defeats checking rather than reading', () => {
+      const finding = signalFor(result, 'identity.styled_display_name');
+      expect(finding?.severity).toBe('medium');
+      expect(finding?.description).toContain('avoid being checked');
+    });
+
+    it('is not claimed for ordinary names, accents, or emoji', () => {
+      for (const name of ['Payment Declined', 'Zoë Müller', 'Kestrel Coffee ☕', 'ACME™ Billing']) {
+        const scored = analyzeDeterministic({ ...base, senderName: name });
+        expect(hasSignal(scored, 'identity.styled_display_name')).toBe(false);
+      }
+    });
+
+    /**
+     * The consequence, not just the observation. Folding the name for *matching* is what lets the
+     * brand-independent organisational-claim rule see `payment declined` at all — spelled in the
+     * mathematical alphabet it matched no pattern, which is the entire reason it is spelled that way.
+     */
+    it('still reads what the name claims, through the substitution', () => {
+      expect(hasSignal(result, 'identity.unsupported_org_claim')).toBe(true);
+    });
+  });
+
+  describe('a payload page held in a public storage bucket', () => {
+    it('is reported even though the host is Google and the URL is flawless', () => {
+      const finding = signalFor(result, 'link.page_in_open_storage');
+      expect(finding?.severity).toBe('high');
+      expect(finding?.evidence?.value).toBe('storage.googleapis.com');
+      expect(finding?.description).toContain('not to whoever wrote the page');
+    });
+
+    it('says nothing about assets and downloads, which is what object storage is for', () => {
+      for (const path of ['/bucket/logo.png', '/bucket/invoice-4471.pdf', '/bucket/app-1.2.zip']) {
+        const scored = analyzeDeterministic({
+          ...base,
+          links: [toEmailLink({ text: 'Download', href: `https://storage.googleapis.com${path}` })],
+        });
+        expect(hasSignal(scored, 'link.page_in_open_storage')).toBe(false);
+      }
+    });
+
+    it('leaves a sign-in page to the rule that can say what it asks for', () => {
+      const login = analyzeDeterministic({
+        ...base,
+        links: [
+          toEmailLink({
+            text: 'Sign in to continue',
+            href: 'https://storage.googleapis.com/strdrv-9f2/signin.html',
+          }),
+        ],
+      });
+
+      expect(hasSignal(login, 'link.page_in_open_storage')).toBe(false);
+      expect(hasSignal(login, 'link.credential_link_open_hosting')).toBe(true);
+    });
+
+    it('softens to medium when the message is not asking the reader to act', () => {
+      const quiet = analyzeDeterministic({
+        ...base,
+        subject: 'Notes from Thursday',
+        bodyText: 'Here is the write-up we discussed. Nothing urgent, have a look when you get a chance.',
+      });
+      expect(signalFor(quiet, 'link.page_in_open_storage')?.severity).toBe('medium');
+    });
+  });
+
+  describe('a body that vouches for itself', () => {
+    it('reports the forged notice and names who such notices come from', () => {
+      const finding = signalFor(result, 'content.forged_trust_assurance');
+      expect(finding?.description).toContain('come from your mail provider');
+    });
+
+    it('does not fire on ordinary uses of "trust" and "verified"', () => {
+      for (const line of [
+        'Thank you for trusting us with your order. Your account is verified for two-factor sign-in.',
+        'Our verified partners can be found in the directory.',
+        'We take your trust seriously and never share your data.',
+      ]) {
+        const scored = analyzeDeterministic({ ...base, bodyText: line });
+        expect(hasSignal(scored, 'content.forged_trust_assurance')).toBe(false);
+      }
+    });
+  });
+
+  describe('prose hidden with CSS to dilute the wording', () => {
+    it('is reported by volume, with the technique named', () => {
+      const finding = signalFor(result, 'content.hidden_body_text');
+      expect(finding?.description).toContain('display:none');
+      expect(finding?.description).toContain('2784');
+    });
+
+    it('ignores a preheader, which is what nearly every sender hides', () => {
+      const preheader = analyzeDeterministic({
+        ...base,
+        hiddenText: { chars: 120, techniques: ['display:none'] },
+      });
+      expect(hasSignal(preheader, 'content.hidden_body_text')).toBe(false);
+    });
+
+    /**
+     * The suppression this message bought for the price of an unsubscribe link. Bulk-mail shape exists to
+     * keep marketing wording out of the score, and concealed filler is not marketing — so the message that
+     * pads itself no longer gets the benefit of the doubt it was engineered to claim.
+     */
+    it('withdraws the bulk-mail suppression that concealment was buying', () => {
+      const withoutFiller = analyzeDeterministic({ ...base, hiddenText: { chars: 0, techniques: [] } });
+
+      expect(hasSignal(result, 'content.invoice_fraud')).toBe(true);
+      expect(hasSignal(withoutFiller, 'content.invoice_fraud')).toBe(false);
+    });
+
+    it('still recognises a genuine newsletter as bulk mail', () => {
+      const newsletter = analyzeFixture('legitimate-newsletter');
+      expect(newsletter.classification).toBe('low');
+    });
+  });
+
+  /**
+   * The extraction bug this fixture also documents: Gmail printed `via <host>` in the header the whole
+   * time, and `readVia` looked for it inside the sender element, which holds the display name and nothing
+   * else. The rule was written years before it ever ran.
+   */
+  it('reads the via annotation Gmail showed all along', () => {
+    expect(hasSignal(result, 'authentication.via_unrelated_host')).toBe(true);
   });
 });
 
