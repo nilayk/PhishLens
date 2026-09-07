@@ -37,7 +37,14 @@ import {
 } from '../shared/settings.js';
 import type { Settings } from '../shared/types.js';
 import { parseSemanticAnalysis } from '../analysis/llm/parse.js';
-import { RESPONSE_SCHEMA } from '../analysis/llm/prompt.js';
+import {
+  MAX_TOKENS,
+  REQUEST_VARIANTS,
+  completionText,
+  describeHttpFailure,
+  describeUnusable,
+  isShapeRejection,
+} from './model-protocol.js';
 
 /** Cloud request timeout. Bounded so a hung backend cannot keep a worker alive indefinitely. */
 const CLOUD_TIMEOUT_MS = 12_000;
@@ -49,8 +56,6 @@ const CLOUD_TIMEOUT_MS = 12_000;
 const MODEL_SERVER_TIMEOUT_MS = 45_000;
 /** Listing models runs no inference, so a server that cannot answer promptly is not reachable. */
 const MODEL_LIST_TIMEOUT_MS = 8_000;
-/** The schema output is a few hundred bytes; this stops a runaway model streaming indefinitely. */
-const MODEL_SERVER_MAX_TOKENS = 500;
 
 async function readSettings(): Promise<Settings> {
   try {
@@ -141,21 +146,10 @@ async function modelServerAnalyze(request: ModelServerAnalyzeRequest): Promise<E
     { role: 'user', content: request.payload.user },
   ];
 
-  // Structured output is requested in descending order of strictness, because coverage differs by
-  // runner and version, and a server that does not recognise a `response_format` rejects the request
-  // outright rather than ignoring the field. Each retry is a rejected request, not a wasted
-  // generation, so this costs a round trip on old servers and nothing on current ones. The parser
-  // tolerates fenced or prose-wrapped JSON regardless, which is what makes the last rung viable.
-  const formats: (Record<string, unknown> | null)[] = [
-    { type: 'json_schema', json_schema: { name: 'assessment', strict: true, schema: RESPONSE_SCHEMA } },
-    { type: 'json_object' },
-    null,
-  ];
-
-  for (const [index, format] of formats.entries()) {
-    const result = await postCompletion(settings, messages, format);
-    if (result.retryable && index < formats.length - 1) {
-      logger.debug('model server rejected the response format; retrying with a looser one');
+  for (const [index, extras] of REQUEST_VARIANTS.entries()) {
+    const result = await postCompletion(settings, messages, extras);
+    if (result.retryable && index < REQUEST_VARIANTS.length - 1) {
+      logger.debug('model server rejected the request shape; retrying with a plainer one');
       continue;
     }
     return result.response;
@@ -172,7 +166,7 @@ async function modelServerAnalyze(request: ModelServerAnalyzeRequest): Promise<E
 async function postCompletion(
   settings: Settings,
   messages: readonly { role: string; content: string }[],
-  responseFormat: Record<string, unknown> | null,
+  extras: Record<string, unknown>,
 ): Promise<{ response: ExtensionResponse; retryable: boolean }> {
   const controller = new AbortController();
   const timer = setTimeout(() => {
@@ -188,9 +182,9 @@ async function postCompletion(
         messages,
         // Deterministic: the same message should not score differently on a second reading.
         temperature: 0,
-        max_tokens: MODEL_SERVER_MAX_TOKENS,
+        max_tokens: MAX_TOKENS,
         stream: false,
-        ...(responseFormat === null ? {} : { response_format: responseFormat }),
+        ...extras,
       }),
       signal: controller.signal,
       credentials: 'omit',
@@ -204,24 +198,24 @@ async function postCompletion(
     if (!response.ok) {
       return {
         response: { ok: false, error: describeHttpFailure(response.status) },
-        retryable: response.status === 400 || response.status === 422,
+        retryable: isShapeRejection(response.status),
       };
     }
 
     const body: unknown = await response.json();
     const content = completionText(body);
-    if (content === null) {
-      return { response: { ok: true, type: 'SEMANTIC', analysis: null }, retryable: false };
+    const analysis =
+      content === null ? null : parseSemanticAnalysis(content, 'server', settings.modelName);
+
+    // The one failure in this function that used to be silent, and the most confusing: HTTP 200 with an
+    // answer nothing can be done with. `scrub` reduces the text itself to a length, so what is recorded
+    // is its *shape* — enough to tell a truncated reply from a refusal from prose the parser gave up on,
+    // which is the difference between raising a limit and changing a prompt.
+    if (analysis === null) {
+      logger.debug('model server returned no usable assessment', describeUnusable(body, content));
     }
 
-    return {
-      response: {
-        ok: true,
-        type: 'SEMANTIC',
-        analysis: parseSemanticAnalysis(content, 'server', settings.modelName),
-      },
-      retryable: false,
-    };
+    return { response: { ok: true, type: 'SEMANTIC', analysis }, retryable: false };
   } catch (error) {
     logger.debug('model server request failed', error);
     return {
@@ -234,37 +228,6 @@ async function postCompletion(
   } finally {
     clearTimeout(timer);
   }
-}
-
-/**
- * An HTTP failure from a model server, worded so the reader can do something about it.
- *
- * 403 earns its own sentence because it is the first thing almost everyone pointing this at Ollama sees,
- * and because the cause is invisible from here: Chrome attaches `Origin: chrome-extension://<id>` to every
- * request the worker makes, and Ollama's CORS layer refuses any origin it was not told to expect. Nothing
- * in the extension can work around that — the header cannot be suppressed, and the address, the port and
- * the permission grant are all correct — so the only useful thing to report is which setting the server
- * needs. Saying "returned 403" instead sends the reader looking for a fault that is not there.
- */
-function describeHttpFailure(status: number): string {
-  if (status === 401 || status === 403) {
-    return `model server refused the request (${String(status)}): it is not configured to accept requests from browser extensions. Ollama needs OLLAMA_ORIGINS to include chrome-extension://* before it starts; LM Studio and others have an equivalent CORS setting.`;
-  }
-  if (status === 404) {
-    return 'model server returned 404: there is no OpenAI-compatible API at that address. Ollama serves one under /v1.';
-  }
-  return `model server returned ${String(status)}`;
-}
-
-/** Pulls the assistant text out of a chat-completions envelope without trusting its shape. */
-function completionText(body: unknown): string | null {
-  if (body === null || typeof body !== 'object') return null;
-  const choices = (body as { choices?: unknown }).choices;
-  if (!Array.isArray(choices) || choices.length === 0) return null;
-  const message = (choices[0] as { message?: unknown }).message;
-  if (message === null || typeof message !== 'object') return null;
-  const content = (message as { content?: unknown }).content;
-  return typeof content === 'string' && content.trim() !== '' ? content : null;
 }
 
 /**

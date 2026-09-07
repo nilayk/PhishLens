@@ -206,6 +206,13 @@ setx OLLAMA_ORIGINS "chrome-extension://*"
 LM Studio has an equivalent CORS toggle in its server settings. Naming your own extension id rather than
 `chrome-extension://*` is stricter and worth doing if you keep the setting permanently.
 
+**A reasoning model needs room to think.** Qwen3-class models and their relatives produce several hundred
+tokens of reasoning before the answer, runners count those against the reply's token budget, and the result
+is an assessment cut off mid-sentence and discarded — visible only as "did not return a usable assessment".
+So the request asks for `reasoning_effort: none`, which Ollama honours, *and* allows enough tokens for a
+model that thinks anyway, since not every runner supports the field. If you see nothing usable from a model
+you know is running, a dev build's console names the shape of the reply, including whether it was truncated.
+
 Structured output is requested as `json_schema` first, then `json_object`, then not at all, because
 coverage differs by runner and version and a server that does not recognise a `response_format` rejects
 the request rather than ignoring the field. Each retry is a rejected request rather than a wasted
