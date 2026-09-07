@@ -43,6 +43,11 @@ class FakeAdapter implements MailAdapter {
     return this.rootAvailable ? ({ tagName: 'DIV' } as unknown as Element) : null;
   }
 
+  /** The observer never asks; it is on the interface for the list-row scanner. */
+  accountAddress(): string {
+    return '';
+  }
+
   /**
    * Mirrors `GmailDomAdapter.routeThreadId()`, including its contract that a list route such as
    * `inbox` or `search/invoices` yields no thread id. A fake that returned the raw hash would let

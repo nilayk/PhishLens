@@ -604,6 +604,39 @@ count. Titles track the strength of the model's claim rather than its score, exc
 sub-threshold reading is worded as mild — "Wording resembles credential phishing" over a legitimate
 newsletter is alarming no matter what number sits beside it.
 
+### 4.4 What a list row can honestly support
+
+Marking inbox rows is the most requested shape for a tool like this and the easiest one to get wrong, because
+a list row contains a sender line and nothing else. No body, no links, no attachments, no authentication
+result. Three tempting designs were rejected before the fourth:
+
+- **Score the row anyway.** Running the full engine on a message with only a sender produces a `low`
+  classification for almost everything, which is §3.3's failure exactly: a confident all-clear on mail nobody
+  checked, now applied to the entire inbox at once.
+- **Fetch or open each message to get its body.** Ruled out by the privacy model, and it would turn opening
+  Gmail into dozens of message loads.
+- **Guess from the subject and snippet.** A row's snippet length depends on the window width, so two people
+  looking at the same inbox would see different verdicts.
+
+`src/analysis/triage.ts` instead runs an explicit allowlist of identity rules that need nothing but a name and
+an address: brand-name-versus-domain claims, lookalikes of a brand or of the reader's own domain, punycode,
+malformed and nonexistent TLDs. Everything else is recorded in a second set as needing more than a sender. A
+test enumerates every identity rule the corpus produces and fails when one appears in neither, so a new rule
+cannot be quietly assumed safe here — the default is exclusion, but a *silent* default would mean the feature
+degrades as detection improves.
+
+Two properties are asserted over the whole corpus. **No possible output can read as an all-clear**: every
+verdict is a warning or nothing, so an unmarked row is an unchecked row rather than a clean one. And **no
+fixture that scores low is marked**, which is the same both-directions rule the detection suite uses.
+
+The floor for marking is `high`, one step above the floor for reporting a finding in the card, and that gap is
+the whole difference between a feature people leave on and one they switch off. At `medium` the generous half
+of `unsupported_org_claim` marks rows like `"Accounts Receivable" <ar@a-supplier.example>` — a departmental
+name sharing no word with its own company's domain. Beside a full score and a body, that is a fair remark. As
+the only thing ever said about a message, it is noise. Judging that is not something a test can do, which is
+why the harness renders the whole fixture corpus as one inbox (§9): the number of marked rows is the metric,
+and it has to be looked at.
+
 ---
 
 ## 5. No UI framework
@@ -677,8 +710,9 @@ is already complete.
 
 ### 5.3 Surfaces outside the open message
 
-Two places show something apart from a message being open. Each raises the same question — what can this
-surface honestly say with the evidence it has.
+Three places show something before or apart from a message being open. Each raises the same question — what
+can this surface honestly say with the evidence it has — and the answers differ enough to be worth writing
+down.
 
 **The toolbar popup** (`src/popup/`) answers "is this thing working". Before it existed, every failure mode
 looked identical from the outside: no AI because the browser has no model, no AI because the model server
@@ -697,6 +731,24 @@ the badge appears next to the sender, that AI is optional — are exactly the on
 looking. It opens once, on install, and asks for nothing. It ships as authored HTML with no script at all,
 which is why `check-dist.mjs` scans every page in `dist/` rather than only the ones the manifest names:
 nothing the manifest can be read for references it.
+
+**Inbox-row markers** (`src/content/list-marks.ts`) are the one surface that makes a claim about a message
+nobody opened, and the design constraints follow from how little a row contains. The pure half is described
+in §4.4; the DOM half has two problems of its own. Gmail **recycles row elements** — scrolling and
+refreshing reuse the same `tr` with different mail in it — so each row records the sender it was marked
+for, and a row whose sender changed is re-evaluated rather than trusted. And a list **re-renders
+constantly**, so passes are debounced, bounded to the rows on screen, and skip rows whose sender is
+unchanged, leaving a steady state of one attribute read per row.
+
+The mark is inline-styled rather than given a stylesheet or a shadow root. A stylesheet in Gmail's page is a
+global this project does not otherwise create, and a shadow host per row is dozens of extra roots for one
+glyph; inline properties beat Gmail's own CSS without either. Where the glyph is inserted matters more than
+it looks: the innermost inline container is chosen first, because prepending into the table cell puts the
+mark on a line of its own and makes marked rows taller than their neighbours — a layout change to Gmail's
+own list, which is worse than no mark.
+
+The feature is off by default. It is the only part of the extension that annotates mail the user has not
+chosen to look at, and that is a preference, not a default.
 
 ### 5.4 Selector drift, made visible without telemetry
 
@@ -905,6 +957,13 @@ chosen `test/fixtures/` message, inside a deliberately minimal header mock, whic
 each classification band, each `SemanticStatus`, light and dark — reachable in one keystroke instead of by
 finding a suitable email. `scripts/screenshots.mjs` drives that same page to regenerate `docs/assets/`, so
 the images in the README are renders of the shipping components rather than mockups that drift from them.
+
+Its `view=list` mode is there for a different reason than the rest. Row markers (§5.3) fail by being *too
+numerous* rather than by being wrong, and no assertion answers "would you leave this switched on" — so the
+harness renders the entire fixture corpus as one inbox, in markup mirroring `SELECTORS.listRow` and its
+neighbours, with the real scanner running over it. How many of twenty ordinary-looking rows come back marked
+is a number that has to be read off a screenshot. Using the shipping selectors rather than convenient markup
+also means a candidate list that has gone stale shows up here as a missing mark.
 
 ---
 

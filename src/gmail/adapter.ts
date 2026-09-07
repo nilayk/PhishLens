@@ -71,4 +71,11 @@ export interface MailAdapter {
   extract(handle: MessageHandle): Extraction;
   /** The thread id encoded in the current route, independent of the DOM. */
   routeThreadId(): string;
+  /**
+   * The signed-in mailbox address, or `''` when the page did not give one up.
+   *
+   * On the interface rather than read where it is needed, because which piece of chrome carries it is
+   * mail-client knowledge, and the list-row scanner has no business knowing about Gmail's account menu.
+   */
+  accountAddress(): string;
 }

@@ -45,13 +45,14 @@ silently between builds is one nobody can review. Refreshing it is a visible dif
 ```text
 src/
   content/      orchestration: observe → extract → analyse → render. All state lives here.
-                Also the session health log.
+                Also inbox-row markers and the session health log.
   background/   service worker: settings, model-server egress. Deliberately stateless.
   gmail/        DOM adapter + SPA observer. The only place that knows Gmail's markup.
   analysis/
     rules/      deterministic detectors: identity, link, attachment, content, authentication
     scoring/    weights, ceilings, thresholds, and the pure aggregation function
     llm/        semantic layer: prompt, strict output parsing, on-device + cloud adapters
+    triage.ts   the sender-only subset, for what an inbox row can honestly support
   ui/           badge, panel, highlighting. No framework; Shadow DOM; textContent only.
   popup/        the toolbar popup: verdict for the tab, AI status, extraction health
   options/      settings page
@@ -96,9 +97,15 @@ each state is a link:
                            withholds the score and shows the "Not checked" card; `subject` must not
 ?trust=none                none | offer | trusted | unproven — the sender's trust state in the card
 ?view=full                 full (mock message) | card (card alone) | badges (one row per risk band)
+                           | list (the whole corpus as an inbox, with the real row scanner over it)
 ?card=1                    open the explanation card
 ?bare=1                    hide the harness controls, for screenshots
 ```
+
+`view=list` is worth singling out. The row markers' failure mode is not a wrong verdict but too many of
+them, and no test can answer "would you leave this switched on" — so the list renders every fixture as one
+inbox, using markup that mirrors `SELECTORS.listRow` and its neighbours. A stale selector candidate shows
+up here as a missing mark rather than as a passing test.
 
 Fixtures are injected into the bundle by `scripts/harness.mjs`, so adding a fixture file is enough to make
 it appear in the picker.
@@ -111,13 +118,13 @@ npm run screenshots  # in another
 ```
 
 `scripts/screenshots.mjs` drives headless Chrome — no Puppeteer or Playwright, since a browser automation
-stack is a large amount of supply chain to own for four PNGs — and overwrites `docs/assets/`. Set
+stack is a large amount of supply chain to own for five PNGs — and overwrites `docs/assets/`. Set
 `CHROME_PATH` if Chrome is somewhere unusual. Because the images are renders of the shipping components, a
 UI change is one command away from being reflected in the README instead of silently outdating it.
 
 ## Testing
 
-857 tests, all in plain Node — no Chrome, no Gmail, no network.
+866 tests, all in plain Node — no Chrome, no Gmail, no network.
 
 | File | Covers |
 | --- | --- |
@@ -133,6 +140,7 @@ UI change is one command away from being reflected in the README instead of sile
 | `test/extraction.test.ts` | The extraction-gap rule, starting by demonstrating the danger: a thread hijack scored with its sender removed comes back **Low Risk**, because a reply-chain attack is detectable only from identity. Also that the card's wording never reassures, and that neither diagnostic — the single-message one or the session tally — carries anything from a message. |
 | `test/model-protocol.test.ts` | The OpenAI-compatible request and response shapes, and the URL policy the worker enforces before any of it is sent. |
 | `test/trust.test.ts` | Each of the four limits on trusted senders, from both sides: that trust dampens what it should, and that it does nothing at all when authentication did not prove the sender, against an identity finding, or against a `high` finding. |
+| `test/triage.test.ts` | The sender-only verdicts, that none of them can read as an all-clear, that no low-scoring fixture is marked, and the allowlist guard that fails when a new identity rule is classified as neither safe nor unsafe for a list row. |
 | `test/popup.test.ts` | The popup's wording for every state — in particular that "nothing was found" and "nothing was checked" never share a phrasing — and the health line for each shape of extraction failure. |
 
 Fixture philosophy and the both-directions assertion are described in

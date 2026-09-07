@@ -62,6 +62,14 @@ const SHOTS = [
     height: 266,
     caption: 'the badge at each risk level, and unable to read',
   },
+  {
+    name: 'inbox-list.png',
+    query: { view: 'list', bare: '1' },
+    width: 920,
+    // The whole fixture corpus as one inbox, so the shot shows how few rows are marked as well as which.
+    height: 830,
+    caption: 'markers on inbox rows',
+  },
 ];
 
 const CHROME_CANDIDATES = [

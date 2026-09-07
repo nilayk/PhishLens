@@ -62,6 +62,10 @@ export class GmailDomAdapter implements MailAdapter {
    * thread should be on screen, and cross-checking it against the DOM is what prevents a stale
    * analysis when Gmail has navigated but not yet re-rendered. See `observer.ts`.
    */
+  accountAddress(): string {
+    return readAccountAddress() ?? '';
+  }
+
   routeThreadId(): string {
     try {
       const hash = window.location.hash.replace(/^#/u, '');

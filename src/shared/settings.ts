@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = Object.freeze({
   aiMode: 'local',
   highlightEnabled: true,
   showBadgeWhenLow: true,
+  listMarksEnabled: false,
   backendBaseUrl: '',
   modelBaseUrl: '',
   modelName: '',
@@ -43,6 +44,10 @@ export function normalizeSettings(raw: unknown): Settings {
       typeof source['showBadgeWhenLow'] === 'boolean'
         ? source['showBadgeWhenLow']
         : DEFAULT_SETTINGS.showBadgeWhenLow,
+    listMarksEnabled:
+      typeof source['listMarksEnabled'] === 'boolean'
+        ? source['listMarksEnabled']
+        : DEFAULT_SETTINGS.listMarksEnabled,
     backendBaseUrl: normalizeBackendUrl(source['backendBaseUrl']),
     modelBaseUrl: normalizeModelBaseUrl(source['modelBaseUrl']),
     modelName: normalizeModelName(source['modelName']),

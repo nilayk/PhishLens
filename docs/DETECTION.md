@@ -182,9 +182,30 @@ attacker. Four constraints, each with a test:
   sender is trusted with an undo. Nothing is silently removed; the list is also editable in the options
   page.
 
+## What a list row can support
+
+`src/analysis/triage.ts` runs a subset of the identity rules against a sender line alone, for markers on
+inbox rows. A row has no body, no links, and no authentication result, so the rule set is an explicit
+allowlist of checks that need nothing else: brand-name-versus-domain claims, lookalikes of a brand or of
+the reader's own domain, punycode, and malformed or nonexistent TLDs. A test enumerates every identity
+rule the corpus produces and fails if one is in neither the allowlist nor the recorded exclusions, so a
+new rule cannot be assumed safe here by omission.
+
+Two properties are asserted over the whole corpus:
+
+- **No marker can read as an all-clear.** Every possible output is a warning or nothing. An unmarked row
+  is an unchecked row.
+- **No fixture that scores low is marked.**
+
+The floor for marking is `high`, deliberately above the floor for reporting a finding in the card. At
+`medium` the generous half of `unsupported_org_claim` marks rows like
+`"Accounts Receivable" <ar@a-supplier.example>` — a departmental name sharing no word with its own
+company's domain. Beside a full score that is a reasonable remark; as the only thing said about a message
+it is the marker that gets the feature switched off.
+
 ## Confidence in the numbers
 
-857 tests run the real pipeline in plain Node — no Chrome, no Gmail, no network. The corpus in
+866 tests run the real pipeline in plain Node — no Chrome, no Gmail, no network. The corpus in
 `test/fixtures/` holds 20 messages: a plain legitimate message, a legitimate password reset, a legitimate
 reply into an existing thread, a newsletter with many links, a newsletter whose links are all rewritten
 through its platform's click tracker, an invoice, PayPal phishing, a Microsoft lookalike domain, a brand

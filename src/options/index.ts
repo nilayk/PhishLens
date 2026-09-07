@@ -72,6 +72,7 @@ class OptionsPage {
   readonly #trusted = requireElement('trusted', HTMLUListElement);
   readonly #trustedEmpty = requireElement('trustedEmpty', HTMLParagraphElement);
   readonly #showBadgeWhenLow = requireElement('showBadgeWhenLow', HTMLInputElement);
+  readonly #listMarksEnabled = requireElement('listMarksEnabled', HTMLInputElement);
   readonly #highlightEnabled = requireElement('highlightEnabled', HTMLInputElement);
   readonly #status = requireElement('status', HTMLDivElement);
   readonly #version = requireElement('version', HTMLSpanElement);
@@ -106,6 +107,10 @@ class OptionsPage {
 
     this.#showBadgeWhenLow.addEventListener('change', () => {
       void this.#save({ showBadgeWhenLow: this.#showBadgeWhenLow.checked });
+    });
+
+    this.#listMarksEnabled.addEventListener('change', () => {
+      void this.#save({ listMarksEnabled: this.#listMarksEnabled.checked });
     });
 
     this.#highlightEnabled.addEventListener('change', () => {
@@ -150,6 +155,7 @@ class OptionsPage {
     this.#modelBaseUrl.value = settings.modelBaseUrl;
     this.#modelName.value = settings.modelName;
     this.#showBadgeWhenLow.checked = settings.showBadgeWhenLow;
+    this.#listMarksEnabled.checked = settings.listMarksEnabled;
     this.#highlightEnabled.checked = settings.highlightEnabled;
     this.#backendError.textContent =
       settings.aiMode === 'cloud' && settings.backendBaseUrl === ''

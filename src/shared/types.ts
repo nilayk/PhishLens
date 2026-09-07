@@ -316,6 +316,16 @@ export interface Settings {
   /** Show the badge even for low-risk messages. */
   showBadgeWhenLow: boolean;
   /**
+   * Mark inbox rows whose *sender* is worth a warning before the message is opened.
+   *
+   * Only ever a warning: a row carries no body, links or authentication, so there is nothing there that
+   * could earn an all-clear. See `analysis/triage.ts`.
+   *
+   * Off by default, unlike every other display setting. It is the only thing here that annotates mail the
+   * user has not chosen to open, which makes it a preference rather than a default.
+   */
+  listMarksEnabled: boolean;
+  /**
    * Base URL of *our own* analysis backend. Empty in the MVP; the cloud adapter is inert without
    * it. This is never a model-vendor endpoint and never carries a vendor API key.
    */

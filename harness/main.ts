@@ -13,6 +13,7 @@
  * Development-only. Not bundled into the extension, and it never reaches a network or a real message.
  */
 import { analyzeDeterministic, analyze, withSemanticStatus } from '../src/analysis/engine.js';
+import { ListMarks } from '../src/content/list-marks.js';
 import { isScorable } from '../src/gmail/adapter.js';
 import { formatDiagnostic } from '../src/gmail/diagnostics.js';
 import type {
@@ -34,7 +35,7 @@ import { toFixture, type Fixture, type RawFixture } from '../test/fixtures/conve
 /** Injected by scripts/harness.mjs, so adding a fixture file needs no change here. */
 declare const __PHISHLENS_FIXTURES__: string;
 
-type View = 'full' | 'badges' | 'card';
+type View = 'full' | 'badges' | 'card' | 'list';
 
 const SEMANTIC_STATES: readonly SemanticStatus[] = [
   'ready',
@@ -46,7 +47,7 @@ const SEMANTIC_STATES: readonly SemanticStatus[] = [
   'off',
 ];
 
-const VIEWS: readonly View[] = ['full', 'badges', 'card'];
+const VIEWS: readonly View[] = ['full', 'badges', 'card', 'list'];
 
 /**
  * The AI section names whichever analyzer ran, so each mode is its own state. Without this the wording
@@ -269,6 +270,7 @@ const panel = new Panel({
 });
 
 const stage = document.querySelector<HTMLElement>('#stage');
+const listMarks = new ListMarks();
 
 async function renderFull(state: HarnessState): Promise<void> {
   if (stage === null) return;
@@ -371,6 +373,66 @@ async function renderBadges(semantic: SemanticStatus): Promise<void> {
   }
 }
 
+/**
+ * A message list, in Gmail's own row shape, with the real `ListMarks` scanner over it.
+ *
+ * The whole corpus as one inbox, which is the view that answers the question the feature lives or dies on:
+ * how much of an ordinary inbox ends up marked. Reading that off a screenshot is the only way to judge it
+ * — a test can assert that no legitimate fixture is marked, but not whether the result looks like a tool
+ * worth leaving switched on.
+ *
+ * The markup mirrors `SELECTORS.listRow` and its neighbours rather than being styled to taste: the point
+ * is to exercise the same selectors that run against Gmail, so a candidate list that has gone stale shows
+ * up here as a missing mark.
+ */
+function renderList(): void {
+  if (stage === null) return;
+  panel.close();
+  listMarks.stop();
+
+  const rows = fixtures.map((fixture) => {
+    const email = fixture.email;
+    return el('tr', {
+      class: 'zA',
+      children: [
+        el('td', {
+          class: 'xY',
+          children: [
+            el('div', {
+              class: 'yW',
+              children: [
+                el('span', {
+                  text: email.senderName === '' ? (email.senderEmail ?? '') : (email.senderName ?? ''),
+                  attrs: {
+                    email: email.senderEmail ?? '',
+                    name: email.senderName ?? '',
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+        el('td', {
+          class: 'xY a4W',
+          children: [
+            el('div', {
+              class: 'y6',
+              children: [
+                el('span', { class: 'bog', text: email.subject ?? '(no subject)' }),
+                el('span', { class: 'snippet', text: ` — ${email.bodyText.slice(0, 90)}` }),
+              ],
+            }),
+          ],
+        }),
+      ],
+    });
+  });
+
+  const list = el('table', { class: 'list', children: [el('tbody', { children: rows })] });
+  stage.replaceChildren(list);
+  listMarks.start(list, () => 'sam.okafor@northwind-logistics.com');
+}
+
 async function renderCardOnly(state: HarnessState): Promise<void> {
   if (stage === null) return;
   const frame = el('div', { class: 'card-frame' });
@@ -448,10 +510,15 @@ async function render(): Promise<void> {
 
   syncControls(state, view, missingParam);
 
+  // Every view other than `list` shows one message, so the scanner has nothing to mark and its observer
+  // would otherwise stay attached to a stage it no longer owns.
+  if (view !== 'list') listMarks.stop();
+
   if (view === 'badges') await renderBadges(semantic);
   // `card` shows the card alone on an empty page. It stays pinned bottom-right as it is in Gmail, so
   // sizing the window to the card crops to it exactly without any screenshot post-processing.
   else if (view === 'card') await renderCardOnly(state);
+  else if (view === 'list') renderList();
   else await renderFull(state);
 }
 

@@ -197,6 +197,49 @@
         border-bottom: none;
         padding: 10px 0;
       }
+
+      /*
+        A message list. The class names on the rows themselves are Gmail's, because the point of this view
+        is to run the real selectors; these rules only make the result legible.
+      */
+      /* `table-layout: fixed` so a long snippet clips instead of widening the table off-screen. */
+      .list {
+        width: 100%;
+        table-layout: fixed;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      .list tr.zA {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .list td.xY {
+        padding: 10px 12px;
+        vertical-align: baseline;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .list td.xY:first-child {
+        width: 200px;
+      }
+
+      /* Ellipsis needs a block box; on the `td` itself it is ignored. */
+      .list .yW,
+      .list .y6 {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .list .bog {
+        font-weight: 600;
+      }
+
+      .list .snippet {
+        color: var(--muted);
+      }
     </style>
   </head>
   <body>

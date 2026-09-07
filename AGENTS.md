@@ -77,6 +77,12 @@ only when Gmail's summary proves the sender's domain, and never a `high` or `cri
 of the three turns the trust list into the spoofing hole it is designed not to be — trusting `paypal.com`
 must never quieten `paypa1.com`. Dampened findings stay visible and reversible; nothing is removed.
 
+**A list row is sender-only, and never an all-clear.** `analysis/triage.ts` runs an explicit allowlist of
+identity rules against a name and an address. Do not add a rule needing a body, links, or an authentication
+result, do not add a "looks fine" verdict, and do not lower the `high` floor — an unmarked row means
+unchecked, and a marker on ordinary mail is what gets the feature switched off. A test forces every new
+identity rule to be classified either way.
+
 **The service worker is stateless.** MV3 terminates it after ~30 seconds idle. No module-level cache, no
 model session, no in-flight work in `src/background/`. Stateful things live in the content script, whose
 context lasts as long as the tab.

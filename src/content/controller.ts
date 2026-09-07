@@ -36,6 +36,7 @@ import { Badge } from '../ui/badge.js';
 import { Highlighter } from '../ui/highlight.js';
 import { Panel, type PanelView, type UnreadableView } from '../ui/panel.js';
 import { HealthLog } from './health.js';
+import { ListMarks } from './list-marks.js';
 
 /**
  * Bounded in-memory cache so revisiting a thread does not re-run the model.
@@ -71,6 +72,7 @@ export class Controller {
   readonly #highlighter = new Highlighter();
   readonly #cache = new Map<string, AnalysisResult>();
   readonly #health = new HealthLog();
+  readonly #listMarks = new ListMarks();
 
   #settings: Settings = { ...DEFAULT_SETTINGS };
   #active: ActiveView | null = null;
@@ -118,6 +120,7 @@ export class Controller {
     chrome.storage.onChanged.addListener(this.#handleStorageChanged);
     chrome.runtime.onMessage.addListener(this.#handleTabRequest);
     this.#observer.start();
+    this.#applyListMarks();
     this.#warmModel();
   }
 
@@ -125,6 +128,7 @@ export class Controller {
     this.#refinement?.abort();
     this.#refinement = null;
     this.#observer.stop();
+    this.#listMarks.stop();
     chrome.storage.onChanged.removeListener(this.#handleStorageChanged);
     chrome.runtime.onMessage.removeListener(this.#handleTabRequest);
     this.#panel.close();
@@ -453,6 +457,27 @@ export class Controller {
       if (aiChanged) this.#warmModel();
       this.#observer.refresh();
     }
+
+    if (previous.listMarksEnabled !== this.#settings.listMarksEnabled) this.#applyListMarks();
+  }
+
+  /**
+   * Starts or stops marking list rows.
+   *
+   * Its own observer rather than a branch inside the message observer's evaluation: that one is built to
+   * find *one* message and is debounced and reconciled for staleness, none of which applies to a list.
+   * Stopping removes every mark, so turning the setting off leaves nothing behind to explain.
+   */
+  #applyListMarks(): void {
+    if (!this.#settings.listMarksEnabled) {
+      this.#listMarks.stop();
+      return;
+    }
+    // `document.body` when Gmail has not rendered its main region yet, which at `document_idle` it often
+    // has not. Widening the observed subtree costs nothing here: a pass is debounced and bounded, and the
+    // row selectors match list rows and nothing else on the page.
+    const root = this.#adapter.observationRoot() ?? document.body;
+    this.#listMarks.start(root, () => this.#adapter.accountAddress());
   }
 }
 

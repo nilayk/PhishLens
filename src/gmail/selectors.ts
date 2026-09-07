@@ -133,6 +133,34 @@ export const SELECTORS = {
    */
   headerRightCluster: ['td.gH div.gK', 'td.gH.bAk', 'td.gH', '.gH .gK'],
 
+  /**
+   * A row in a message list — inbox, search results, a label.
+   *
+   * `tr.zA` is the long-standing one and `[role="row"]` is the semantic fallback, which also matches
+   * rows in Gmail's newer list layouts. Both are scoped to the list container, never the whole page:
+   * the conversation view has rows of its own (the details table) that must not be mistaken for these.
+   */
+  listRow: ['tr.zA', 'tr[role="row"][id]', 'div[role="row"]'],
+
+  /**
+   * The sender cell of a list row.
+   *
+   * The `email` attribute is what makes this worth doing at all: Gmail puts the real address there even
+   * though the row displays only a name, so a row can be triaged without parsing anything. Where it is
+   * absent there is no address, and triage correctly says nothing.
+   */
+  listSender: ['span[email]', '.yW span[name]', '.bA4 span[name]', '.yW span', '.bA4 span'],
+
+  /**
+   * Where the marker is inserted, before the subject.
+   *
+   * Ordered innermost first, and that order is the whole point: `.y6` and the subject's link wrapper hold
+   * inline spans, so a glyph prepended there sits on the subject's own line. The `td` is a last resort
+   * because its children are blocks — a mark there lands on a line of its own and makes marked rows
+   * taller than their neighbours, which is worse than no mark.
+   */
+  listSubjectCell: ['.y6', 'td.xY div[role="link"]', 'td.xY.a4W'],
+
   /** Anchors within the message body. */
   bodyLink: ['a[href]'],
 
