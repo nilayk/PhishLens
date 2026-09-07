@@ -48,6 +48,14 @@ reason the suite is fast enough to be useful. Anything needing a browser belongs
 **Gmail selectors live in one file.** `src/gmail/selectors.ts`, as prioritised candidate lists. A selector
 inline in `dom-adapter.ts` is a bug — when Gmail changes its markup, one file should need editing.
 
+**A message that could not be read is never scored.** `extract()` returns the message *and* the parts it
+could not find; `isScorable()` in `src/gmail/adapter.ts` decides whether a score would be honest. With no
+sender, nearly every check has nothing to test, so the engine returns no findings and the aggregation
+turns that into **Low Risk** — a confident all-clear on mail nobody checked, which is the one failure
+direction this project does not accept. Do not "fix" that by scoring it anyway, by removing the badge
+(indistinguishable from a clean message when `showBadgeWhenLow` is off), or by softening the card's
+wording: the sentence saying this is not a judgement of safety is load-bearing and is asserted by a test.
+
 **The model cannot outvote the checks.** The `llm` category is capped at 15 points, contributes additively,
 and scores zero when no deterministic signal corroborates it. It cannot remove a finding, lower a score
 past a deterministic floor, or change a classification on its own. If a change would let it, the change is

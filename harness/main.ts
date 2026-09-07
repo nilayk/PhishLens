@@ -8,16 +8,19 @@
  * Every control is also a query parameter, which is what lets `scripts/screenshots.mjs` regenerate
  * `docs/assets/` without driving the widgets: navigate, wait, capture.
  *
- *   ?fixture=microsoft-phish&semantic=ready&card=1&view=full&bare=1
+ *   ?fixture=microsoft-phish&semantic=ready&card=1&view=full&bare=1&missing=none
  *
  * Development-only. Not bundled into the extension, and it never reaches a network or a real message.
  */
 import { analyzeDeterministic, analyze, withSemanticStatus } from '../src/analysis/engine.js';
+import { isScorable } from '../src/gmail/adapter.js';
+import { formatDiagnostic } from '../src/gmail/diagnostics.js';
 import type {
   AiMode,
   AnalysisResult,
   Classification,
   EmailMessage,
+  MessagePart,
   SemanticAnalysis,
   SemanticAnalyzer,
   SemanticStatus,
@@ -52,6 +55,47 @@ const AI_MODES: readonly AiMode[] = ['local', 'server', 'cloud', 'off'];
 
 /** Ascending, so `view=badges` reads from safest to worst. */
 const BANDS: readonly Classification[] = ['low', 'caution', 'suspicious', 'high-risk'];
+
+/**
+ * Which parts of the message the adapter is pretending it could not read.
+ *
+ * The only way to see the "not checked" state otherwise is to break a selector against live Gmail. Both
+ * outcomes are here on purpose: `subject` is not load-bearing, so it must still produce an ordinary
+ * scored card, and seeing that is what distinguishes a working rule from one that withholds a score
+ * whenever anything at all is absent.
+ */
+const MISSING_STATES: readonly string[] = ['none', 'sender', 'subject'];
+
+/** The message as the adapter would have handed it over, with the unread parts genuinely absent. */
+function withoutParts(email: EmailMessage, missing: readonly MessagePart[]): EmailMessage {
+  const copy = { ...email };
+  for (const part of missing) {
+    if (part === 'sender') {
+      delete copy.senderEmail;
+      delete copy.senderName;
+    }
+    if (part === 'subject') delete copy.subject;
+    if (part === 'body') copy.bodyText = '';
+  }
+  return copy;
+}
+
+/** A stand-in report, in the shape `buildDiagnostic` produces from a real page. */
+function cannedDiagnostic(missing: readonly MessagePart[]): string {
+  return formatDiagnostic({
+    adapter: 'gmail-dom',
+    version: 'harness',
+    browser: 'Chrome/0.0.0.0',
+    missing,
+    probes: [
+      { group: 'messageContainer', scope: 'message', candidate: 0 },
+      { group: 'senderSpan', scope: 'none', candidate: -1 },
+      { group: 'senderTextual', scope: 'none', candidate: -1 },
+      { group: 'subject', scope: 'document', candidate: 1 },
+      { group: 'body', scope: 'message', candidate: 0 },
+    ],
+  });
+}
 
 const fixtures: Fixture[] = (JSON.parse(__PHISHLENS_FIXTURES__) as RawFixture[]).map(toFixture);
 
@@ -209,10 +253,10 @@ async function renderFull(
   fixture: Fixture,
   semantic: SemanticStatus,
   aiMode: AiMode,
+  missing: readonly MessagePart[],
   cardOpen: boolean,
 ): Promise<void> {
   if (stage === null) return;
-  const result = await resultFor(fixture.email, semantic, aiMode);
   const { row, right } = headerRow(fixture.email);
 
   stage.replaceChildren(
@@ -226,17 +270,47 @@ async function renderFull(
     }),
   );
 
-  const view: PanelView = { result, aiMode, email: fixture.email, semantic };
+  const view = await viewFor(fixture, semantic, aiMode, missing);
   const badge = new Badge({
     onActivate: () => {
       panel.toggle(view);
     },
   });
   badge.attach(right);
-  badge.setResult(result);
+  if (view.kind === 'unreadable') badge.setUnreadable();
+  else badge.setResult(view.result);
 
   if (cardOpen) panel.open(view);
   else panel.close();
+}
+
+/**
+ * The card's whole input, chosen the way the controller chooses it: an unscorable extraction never
+ * reaches the engine, so the harness must not build a result for one either.
+ */
+async function viewFor(
+  fixture: Fixture,
+  semantic: SemanticStatus,
+  aiMode: AiMode,
+  missing: readonly MessagePart[],
+): Promise<PanelView> {
+  if (!isScorable(missing)) {
+    return {
+      kind: 'unreadable',
+      // Actually removed, not merely declared missing: the card names the message it is about, and a
+      // sender it could not read has to be absent for that line to read as a reader would see it.
+      email: withoutParts(fixture.email, missing),
+      missing,
+      diagnostic: cannedDiagnostic(missing),
+    };
+  }
+  return {
+    kind: 'result',
+    result: await resultFor(fixture.email, semantic, aiMode),
+    aiMode,
+    email: fixture.email,
+    semantic,
+  };
 }
 
 /**
@@ -270,19 +344,30 @@ async function renderBadges(semantic: SemanticStatus): Promise<void> {
     badge.attach(right);
     badge.setResult(example.result);
   }
+
+  // Last, and not one of the bands: "not checked" is the absence of a reading rather than a step on the
+  // same scale. The README documents it in the same table, so the image has to show it.
+  const first = scored[0];
+  if (first !== undefined) {
+    const { row, right } = headerRow(withoutParts(first.fixture.email, ['sender']));
+    rows.append(row);
+    const badge = new Badge({ onActivate: () => undefined });
+    badge.attach(right);
+    badge.setUnreadable();
+  }
 }
 
 async function renderCardOnly(
   fixture: Fixture,
   semantic: SemanticStatus,
   aiMode: AiMode,
+  missing: readonly MessagePart[],
 ): Promise<void> {
   if (stage === null) return;
   const frame = el('div', { class: 'card-frame' });
   stage.replaceChildren(frame);
 
-  const result = await resultFor(fixture.email, semantic, aiMode);
-  panel.open({ result, aiMode, email: fixture.email, semantic });
+  panel.open(await viewFor(fixture, semantic, aiMode, missing));
 
   // The card is built as a child of <body>, as it is in Gmail. Moving the host into the frame leaves
   // the component itself untouched.
@@ -329,16 +414,18 @@ async function render(): Promise<void> {
   const view = pick(params.get('view'), VIEWS, 'full');
   document.body.dataset['view'] = view;
   const cardOpen = params.get('card') === '1';
+  const missingParam = pick(params.get('missing'), MISSING_STATES, 'none');
+  const missing: readonly MessagePart[] = missingParam === 'none' ? [] : [missingParam as MessagePart];
   const fixture = fixtures.find((f) => f.name === params.get('fixture')) ?? fixtures[0];
   if (fixture === undefined) return;
 
-  syncControls(fixture.name, semantic, aiMode, view, cardOpen);
+  syncControls(fixture.name, semantic, aiMode, view, missingParam, cardOpen);
 
   if (view === 'badges') await renderBadges(semantic);
   // `card` shows the card alone on an empty page. It stays pinned bottom-right as it is in Gmail, so
   // sizing the window to the card crops to it exactly without any screenshot post-processing.
-  else if (view === 'card') await renderCardOnly(fixture, semantic, aiMode);
-  else await renderFull(fixture, semantic, aiMode, cardOpen);
+  else if (view === 'card') await renderCardOnly(fixture, semantic, aiMode, missing);
+  else await renderFull(fixture, semantic, aiMode, missing, cardOpen);
 }
 
 function pick<T extends string>(value: string | null, allowed: readonly T[], fallback: T): T {
@@ -372,12 +459,14 @@ function syncControls(
   semantic: SemanticStatus,
   aiMode: AiMode,
   view: View,
+  missing: string,
   cardOpen: boolean,
 ): void {
   fillSelect('#fixture', fixtures.map((f) => f.name), fixtureName);
   fillSelect('#semantic', [...SEMANTIC_STATES], semantic);
   fillSelect('#ai', [...AI_MODES], aiMode);
   fillSelect('#view', [...VIEWS], view);
+  fillSelect('#missing', [...MISSING_STATES], missing);
 
   const card = document.querySelector<HTMLInputElement>('#card');
   if (card !== null) card.checked = cardOpen;
@@ -403,6 +492,7 @@ for (const [selector, key] of [
   ['#semantic', 'semantic'],
   ['#ai', 'ai'],
   ['#view', 'view'],
+  ['#missing', 'missing'],
 ] as const) {
   document.querySelector<HTMLSelectElement>(selector)?.addEventListener('change', (event) => {
     const target = event.currentTarget;

@@ -17,7 +17,8 @@ import {
   withSemanticStatus,
 } from '../analysis/engine.js';
 import { localAnalyzer, resolveAnalyzer } from '../analysis/llm/index.js';
-import type { MailAdapter, MessageHandle } from '../gmail/adapter.js';
+import { isScorable, type MailAdapter, type MessageHandle } from '../gmail/adapter.js';
+import { buildDiagnostic } from '../gmail/diagnostics.js';
 import { GmailObserver, type ObserverEvent } from '../gmail/observer.js';
 import { logger } from '../shared/logger.js';
 import { sendMessage } from '../shared/messaging.js';
@@ -26,13 +27,14 @@ import type {
   AiMode,
   AnalysisResult,
   EmailMessage,
+  MessagePart,
   SecuritySignal,
   SemanticStatus,
   Settings,
 } from '../shared/types.js';
 import { Badge } from '../ui/badge.js';
 import { Highlighter } from '../ui/highlight.js';
-import { Panel, type PanelView } from '../ui/panel.js';
+import { Panel, type PanelView, type UnreadableView } from '../ui/panel.js';
 
 /**
  * Bounded in-memory cache so revisiting a thread does not re-run the model.
@@ -47,6 +49,8 @@ interface ActiveView {
   signature: string;
   handle: MessageHandle;
   email: EmailMessage;
+  /** Parts the adapter could not read. Non-empty in a load-bearing part means nothing was scored. */
+  missing: readonly MessagePart[];
   result: AnalysisResult | null;
   /**
    * Where the semantic stage has got to *for this view*. Not derivable from the result: "in flight"
@@ -137,16 +141,38 @@ export class Controller {
 
     const token = ++this.#analysisToken;
     const aiMode = this.#settings.aiMode;
-    this.#active = {
+    const active: ActiveView = {
       signature: event.signature,
       handle: event.handle,
       email: event.email,
+      missing: event.missing,
       result: null,
       semantic: aiMode === 'off' ? 'off' : 'pending',
     };
+    this.#active = active;
 
     if (event.handle.headerElement !== null) {
       this.#badge.attach(event.handle.headerElement);
+    }
+
+    /*
+     * Nothing is scored when a load-bearing part could not be read.
+     *
+     * The rule engine would happily score it: with no sender there is nothing for the identity,
+     * authentication or thread checks to object to, so it returns a near-zero score, `low`, and a green
+     * badge — the most reassuring output the extension can produce, at the moment it knows the least.
+     * The badge stays, saying so, because removing it would be indistinguishable from a clean message
+     * on a `showBadgeWhenLow: false` install. That setting is not consulted here for the same reason:
+     * this is not a low reading.
+     */
+    if (!isScorable(event.missing)) {
+      logger.info('message not scored', { missing: event.missing });
+      this.#badge.setUnreadable();
+      // An open card is repainted, exactly as `#applyResult` does. Moving between messages within one
+      // thread is not a route change, so nothing has closed it: without this it would go on displaying
+      // the previous message's score beside a badge saying this one was never checked.
+      if (this.#panel.isOpen) this.#panel.open(this.#unreadableView(active));
+      return;
     }
 
     const cached = this.#cache.get(event.signature);
@@ -259,8 +285,30 @@ export class Controller {
 
   #togglePanel(): void {
     const active = this.#active;
-    if (active?.result == null) return;
+    if (active === null) return;
+
+    if (!isScorable(active.missing)) {
+      this.#panel.toggle(this.#unreadableView(active));
+      return;
+    }
+
+    if (active.result === null) return;
     this.#panel.toggle(viewOf(active, active.result, this.#settings.aiMode));
+  }
+
+  /**
+   * The card's input for a message that was not scored.
+   *
+   * The selector probe runs here rather than during extraction: it walks every candidate list, and the
+   * overwhelmingly common case is that this card is never shown at all.
+   */
+  #unreadableView(active: ActiveView): UnreadableView {
+    return {
+      kind: 'unreadable',
+      email: active.email,
+      missing: active.missing,
+      diagnostic: buildDiagnostic(active.handle, active.missing, this.#adapter.id),
+    };
   }
 
   /**
@@ -302,7 +350,7 @@ export class Controller {
 
 /** The result is passed separately so this cannot be called before there is one to render. */
 function viewOf(active: ActiveView, result: AnalysisResult, aiMode: AiMode): PanelView {
-  return { result, aiMode, email: active.email, semantic: active.semantic };
+  return { kind: 'result', result, aiMode, email: active.email, semantic: active.semantic };
 }
 
 /** Reads settings via the worker, falling back to defaults if it is mid-restart. */

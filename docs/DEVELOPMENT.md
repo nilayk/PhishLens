@@ -83,6 +83,8 @@ each state is a link:
 ?fixture=microsoft-phish   any file in test/fixtures/
 ?semantic=ready            ready | pending | unavailable | no-output | error | cancelled | off
 ?ai=local                  local | server | cloud | off — which analyzer the card names
+?missing=none              none | sender | subject — a part the adapter could not read. `sender`
+                           withholds the score and shows the "Not checked" card; `subject` must not
 ?view=full                 full (mock message) | card (card alone) | badges (one row per risk band)
 ?card=1                    open the explanation card
 ?bare=1                    hide the harness controls, for screenshots
@@ -105,7 +107,7 @@ UI change is one command away from being reflected in the README instead of sile
 
 ## Testing
 
-702 tests, all in plain Node — no Chrome, no Gmail, no network.
+719 tests, all in plain Node — no Chrome, no Gmail, no network.
 
 | File | Covers |
 | --- | --- |
@@ -117,6 +119,7 @@ UI change is one command away from being reflected in the README instead of sile
 | `test/unicode.test.ts` | Punycode decoding, script mixing, bidi tricks, confusable folding, bounded edit distance. |
 | `test/privacy.test.ts` | Settings validation, the model-server URL policy from both directions (loopback `http:` yes, anything else no), and what `buildCloudPayload` **drops** as well as what it keeps. |
 | `test/observer.test.ts` | The SPA observer's emit and suppress decisions in both directions, since every negative decision it makes is silent by design. |
+| `test/extraction.test.ts` | The extraction-gap rule, starting by demonstrating the danger: a thread hijack scored with its sender removed comes back **Low Risk**, because a reply-chain attack is detectable only from identity. Also that the card's wording never reassures, and that the diagnostic carries nothing from the message. |
 
 Fixture philosophy and the both-directions assertion are described in
 [DETECTION.md](DETECTION.md#confidence-in-the-numbers).

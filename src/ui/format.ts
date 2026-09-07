@@ -10,6 +10,7 @@ import type {
   AiMode,
   Classification,
   EmailMessage,
+  MessagePart,
   SecuritySignal,
   SemanticStatus,
   Severity,
@@ -55,6 +56,75 @@ export const CATEGORY_LABELS: Readonly<Record<SignalCategory, string>> = {
 export function ariaLabel(classification: Classification, score: number, findings: number): string {
   const noun = findings === 1 ? 'finding' : 'findings';
   return `PhishLens: ${CLASSIFICATION_LABELS[classification]}, ${String(score)} out of 100, ${String(findings)} ${noun}. Activate for details.`;
+}
+
+// ---------------------------------------------------------------------------
+// When the message could not be read
+// ---------------------------------------------------------------------------
+
+/**
+ * Badge text for a message that was not scored.
+ *
+ * "Not checked" rather than "Unknown" or an error glyph: it says what did not happen, in the same
+ * grammatical shape as the risk labels, and cannot be misread as a verdict of any kind. The badge is
+ * still shown, because a missing badge is indistinguishable from an extension that is not installed —
+ * and a reader who has come to rely on seeing one would take its absence for silence, i.e. approval.
+ */
+export const UNREADABLE_LABEL = 'Not checked';
+export const UNREADABLE_GLYPH = '?';
+
+export const UNREADABLE_ARIA =
+  'PhishLens could not read this message and has not checked it. Activate for details.';
+
+/**
+ * What each unread part cost, in terms of what the extension can no longer say.
+ *
+ * A `Record` so a new `MessagePart` cannot be added without wording, and phrased as a consequence
+ * rather than a cause: "could not read the sender" is a fact about the extension, and what a reader
+ * needs is why that means the absence of a warning tells them nothing.
+ */
+const UNREADABLE_CAUSES: Readonly<Record<MessagePart, string>> = {
+  sender:
+    'PhishLens could not read who this message is from. Most of what it checks — whether the sending domain imitates a brand, whether it matches the display name, whether it belongs in this conversation — depends on that, so it has not produced a score.',
+  body: 'PhishLens could not read the text of this message, so it has not checked its links, wording, or attachments.',
+  subject: 'PhishLens could not read the subject of this message.',
+};
+
+/**
+ * One paragraph of the card's explanation. `emphatic` travels with the text rather than being inferred
+ * from position, because the number of preceding paragraphs depends on how many parts were unread — and
+ * the paragraph that must not be skimmed past would have moved.
+ */
+export interface UnreadableNote {
+  text: string;
+  emphatic: boolean;
+}
+
+/**
+ * The card's explanation.
+ *
+ * The emphatic paragraph is the one that matters and is why this is not simply an error message. A
+ * security indicator that disappears teaches the reader that no badge means nothing found; when the
+ * indicator is the thing that broke, that lesson is actively dangerous, so the card says outright that
+ * this is not a clean bill of health.
+ */
+export function unreadableNotes(missing: readonly MessagePart[]): UnreadableNote[] {
+  const causes = missing.map((part) => UNREADABLE_CAUSES[part]);
+  if (causes.length === 0) {
+    causes.push('PhishLens could not read this message, so it has not produced a score.');
+  }
+
+  return [
+    ...causes.map((text) => ({ text, emphatic: false })),
+    {
+      text: 'This is not a judgement that the message is safe. Nothing was checked, so treat it with the caution you would use if PhishLens were not installed.',
+      emphatic: true,
+    },
+    {
+      text: 'The usual cause is that Gmail changed the structure of its pages and PhishLens needs updating. The report below names the parts it could not find; it contains no part of your mail, and you can read it before sending it anywhere.',
+      emphatic: false,
+    },
+  ];
 }
 
 /**

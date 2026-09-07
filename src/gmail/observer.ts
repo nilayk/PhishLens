@@ -39,7 +39,7 @@
  * so the first emit is against a complete message rather than an empty one.
  */
 import { logger } from '../shared/logger.js';
-import type { EmailMessage } from '../shared/types.js';
+import type { EmailMessage, MessagePart } from '../shared/types.js';
 import type { MailAdapter, MessageHandle } from './adapter.js';
 
 export interface MessageOpenedEvent {
@@ -47,6 +47,11 @@ export interface MessageOpenedEvent {
   signature: string;
   handle: MessageHandle;
   email: EmailMessage;
+  /**
+   * Parts of the message the adapter could not read. Carried with the event rather than recomputed by
+   * the consumer, because it describes the same extraction the `email` above came from.
+   */
+  missing: readonly MessagePart[];
 }
 
 export interface NoMessageEvent {
@@ -247,7 +252,7 @@ export class GmailObserver {
     const handle = this.#adapter.currentMessage();
     if (handle === null) return false;
 
-    const email = this.#adapter.extract(handle);
+    const { email, missing } = this.#adapter.extract(handle);
 
     // A header rendered before its body: wait rather than analysing an empty message.
     if (email.bodyText.trim() === '' && email.links.length === 0 && email.attachments.length === 0) {
@@ -278,7 +283,7 @@ export class GmailObserver {
     this.#lastEmit = { routeThreadId, domSignature: domSig };
     this.#expectedThreadId = routeThreadId;
     logger.debug('message opened', { signature });
-    this.#onEvent({ kind: 'message', signature, handle, email });
+    this.#onEvent({ kind: 'message', signature, handle, email, missing });
     return true;
   }
 }

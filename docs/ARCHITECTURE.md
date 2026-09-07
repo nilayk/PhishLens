@@ -278,6 +278,49 @@ class names (`.a3s`, `.gD`, `.hP`) churn far more often than its data attributes
 individually `try`-wrapped per field: a Gmail redesign that breaks attachment extraction degrades to
 "no attachment signals", it does not break the extension.
 
+### 3.3 A gap is reported, not absorbed
+
+Field isolation keeps the extension alive through a Gmail redesign, and on its own it is not enough,
+because the two failures it produces are not equivalent:
+
+| Unread | Consequence | Honest? |
+| --- | --- | --- |
+| Attachment chips | No attachment findings. The score is lower by a knowable amount. | Yes |
+| Sender address | Identity, authentication, thread and correlation checks have nothing to test, so the message yields **no findings at all** — which aggregates to a score near zero and a green **Low Risk** badge. | No |
+
+The second is the only failure in the project that overstates safety, and it does so with full
+confidence at the moment the extension knows least. It is also invisible: a user watching for a badge
+sees one, and it is reassuring.
+
+So `extract()` returns an `Extraction` — the message *and* the parts it could not read — and
+`isScorable()` decides whether a score built from it would be honest. When it would not be, the
+controller never calls the engine: the badge reads **Not checked**, and the card explains which part was
+unreadable and states outright that nothing having been found is not a finding of nothing. `sender` and
+`body` are load-bearing; a missing `subject` costs some wording checks and is reported in the diagnostic
+without withholding a score.
+
+Two deliberate choices:
+
+- **`missing` is beside `EmailMessage`, not inside it.** How well the adapter could read a page is not a
+  property of the mail, and putting it in the message would let `analysis/` branch on extraction quality —
+  which would make the detection rules dependent on a notion of a broken DOM to test.
+- **The badge stays, rather than being removed.** Removing it is indistinguishable from a clean message
+  on a `showBadgeWhenLow: false` install, which is the same false reassurance by a different route. For
+  the same reason that setting is not consulted in this state: it is not a low reading.
+
+The card also carries a **diagnostic report** (`src/gmail/diagnostics.ts`) naming which selector group
+matched which candidate, and which matched nothing. This is the project's substitute for telemetry,
+which it does not have and does not want: a broken selector can only become known if the person looking
+at it can say something actionable, and "PhishLens stopped working" is not. The report holds selector
+strings we wrote, the two version numbers and the missing parts — no URL (it carries a thread id), no
+extracted value, and no content-derived counts. It is rendered in full and selectable, not merely
+copyable, because a user who cannot read what they are about to send cannot check that claim.
+
+Not covered: a break in `messageContainer` or `body` yields no handle at all, so there is nothing to
+report a gap *on*. That surfaces as reconciliation timing out, which is also what an unrecognised view
+looks like, so it is left alone rather than risk claiming a message could not be read on pages that hold
+no message.
+
 Two things are read from outside the assessed message, and both are constrained the same way. The
 recipient row tells a message the user *sent* from one merely claiming to be from them, and the senders of
 the messages above it give detection the conversation history that reply-chain hijacking is invisible

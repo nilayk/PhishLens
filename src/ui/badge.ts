@@ -8,7 +8,14 @@
 import type { AnalysisResult, Classification } from '../shared/types.js';
 import { createShadowHost, el } from './dom.js';
 import { BADGE_CSS } from './styles.js';
-import { CLASSIFICATION_GLYPHS, CLASSIFICATION_LABELS, ariaLabel } from './format.js';
+import {
+  CLASSIFICATION_GLYPHS,
+  CLASSIFICATION_LABELS,
+  UNREADABLE_ARIA,
+  UNREADABLE_GLYPH,
+  UNREADABLE_LABEL,
+  ariaLabel,
+} from './format.js';
 
 const HOST_ID = 'phishlens-badge-host';
 
@@ -68,6 +75,18 @@ export class Badge {
     button.disabled = true;
   }
 
+  /**
+   * The message could not be read well enough to score. Clickable, unlike `pending`: the card is where
+   * the explanation and the diagnostic live, and this state is the one a user needs to act on.
+   */
+  setUnreadable(): void {
+    const button = this.#button;
+    if (button === null) return;
+    this.#render(button, 'unreadable', UNREADABLE_LABEL, '', UNREADABLE_GLYPH);
+    button.setAttribute('aria-label', UNREADABLE_ARIA);
+    button.disabled = false;
+  }
+
   setResult(result: AnalysisResult): void {
     const button = this.#button;
     if (button === null) return;
@@ -89,7 +108,7 @@ export class Badge {
   /** Rebuilds the badge's contents from text nodes only. */
   #render(
     button: HTMLButtonElement,
-    state: Classification | 'pending',
+    state: Classification | 'pending' | 'unreadable',
     label: string,
     score: string,
     glyph = '',

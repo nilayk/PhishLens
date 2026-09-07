@@ -16,7 +16,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { MailAdapter, MessageHandle } from '../src/gmail/adapter.js';
+import type { Extraction, MailAdapter, MessageHandle } from '../src/gmail/adapter.js';
 import { GmailObserver, domSignature, viewSignature, type ObserverEvent } from '../src/gmail/observer.js';
 import type { EmailMessage } from '../src/shared/types.js';
 
@@ -66,16 +66,19 @@ class FakeAdapter implements MailAdapter {
     };
   }
 
-  extract(): EmailMessage {
+  extract(): Extraction {
     const view = this.view;
-    if (view === null) return { bodyText: '', links: [], attachments: [] };
-    return {
+    if (view === null) {
+      return { email: { bodyText: '', links: [], attachments: [] }, missing: ['sender'] };
+    }
+    const email: EmailMessage = {
       senderEmail: view.senderEmail,
       subject: view.subject,
       bodyText: view.bodyText,
       links: [],
       attachments: [],
     };
+    return { email, missing: view.senderEmail === '' ? ['sender'] : [] };
   }
 }
 

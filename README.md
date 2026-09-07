@@ -16,7 +16,7 @@ happens on your own computer — no account, no server, nothing uploaded.
 
 The badge is always there while you read, and it stays out of the way:
 
-![The badge at three risk levels: Low Risk 12/100, Suspicious 50/100, and High Risk 75/100](docs/assets/badges.png)
+![The badge in four states: Low Risk 12/100, Suspicious 50/100, High Risk 75/100, and a dashed grey "Not checked" on a message whose sender could not be read](docs/assets/badges.png)
 
 | Badge | Score | What it means |
 | --- | --- | --- |
@@ -24,6 +24,7 @@ The badge is always there while you read, and it stays out of the way:
 | ! **Caution** | 25–49 | Something is a little unusual. Worth a second look, probably fine. |
 | ⚠ **Suspicious** | 50–74 | Several things do not add up. Do not enter a password or pay anything. |
 | ⛔ **High Risk** | 75–100 | This has the hallmarks of a real attack. Do not click the links. |
+| ? **Not checked** | — | Rare. PhishLens could not read part of the message, usually because Gmail changed its layout, so it did not score it. **Not a verdict of safe** — treat the message as though PhishLens were not installed, and click the badge for a report you can send us. |
 
 Clicking it opens a card in the corner with the whole reasoning. Hovering a finding highlights the
 part of the message it is about, so you can see the problem yourself rather than take our word for it:

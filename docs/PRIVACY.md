@@ -89,6 +89,20 @@ Treated as certain, not hypothetical. Selector knowledge is isolated in `src/gma
 observer tears the badge down rather than show a stale verdict when it cannot confirm what is on screen. A
 selector break degrades to "fewer findings", never to "wrong findings" or a broken Gmail.
 
+With one exception, which is handled separately: **fewer findings is not honest when the missing field is
+the sender.** Nearly every high-severity check reasons about the sending domain, so a message whose sender
+cannot be read produces no findings, and no findings scores as Low Risk — a confident all-clear on a
+message nobody checked. The extension declines to score at all in that case, shows **Not checked**, and
+says on the card that nothing having been found is not a finding of nothing. See
+[ARCHITECTURE §3.3](ARCHITECTURE.md#33-a-gap-is-reported-not-absorbed).
+
+That card offers a **diagnostic report** to paste into a bug report, because the project has no telemetry
+and a broken selector is otherwise unknowable. It contains selector strings from this repository, the
+extension and browser versions, and the names of the parts that were unread. It contains no message
+content, no address, and not the URL — which carries a thread id, i.e. an identifier for one specific
+message in your mailbox. It is shown in full rather than only copied, so you can read it first, and it is
+sent nowhere unless you paste it somewhere yourself.
+
 ### Prompt injection
 
 Assumed to succeed sometimes. Containment is defence in depth: message content is wrapped in delimiters,

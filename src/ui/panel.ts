@@ -16,6 +16,7 @@ import type {
   AnalysisResult,
   AiMode,
   EmailMessage,
+  MessagePart,
   SecuritySignal,
   SemanticStatus,
   SignalCategory,
@@ -26,11 +27,13 @@ import {
   CATEGORY_LABELS,
   CLASSIFICATION_LABELS,
   SEVERITY_LABELS,
+  UNREADABLE_LABEL,
   aiAbsenceNote,
   evidenceOf,
   isLocatable,
   messageReference,
   pendingLabel,
+  unreadableNotes,
 } from './format.js';
 import { PANEL_CSS } from './styles.js';
 
@@ -50,12 +53,31 @@ export interface PanelCallbacks {
  * paint, model refinement, cache hit — and a call site that updated the result but forgot the status
  * would claim the model is unavailable while it is still running.
  */
-export interface PanelView {
+export interface ResultView {
+  kind: 'result';
   result: AnalysisResult;
   aiMode: AiMode;
   email: EmailMessage;
   semantic: SemanticStatus;
 }
+
+/**
+ * The message could not be read, so there is no score to explain — only why not.
+ *
+ * A separate shape rather than a flag on `ResultView`, because there is no `AnalysisResult` to supply
+ * and inventing a zero-scored one is precisely the failure this card exists to prevent: it would
+ * classify as `low`, colour the strip green, and read as an all-clear everywhere except the paragraph
+ * saying otherwise.
+ */
+export interface UnreadableView {
+  kind: 'unreadable';
+  email: EmailMessage;
+  missing: readonly MessagePart[];
+  /** Built by the caller, which is the layer that may touch the DOM to probe selectors. */
+  diagnostic: string;
+}
+
+export type PanelView = ResultView | UnreadableView;
 
 export class Panel {
   readonly #callbacks: PanelCallbacks;
@@ -139,15 +161,20 @@ export class Panel {
     const scroll = this.#scroll;
     if (panel === null || head === null || scroll === null) return;
 
-    panel.setAttribute('data-state', view.result.classification);
+    panel.setAttribute('data-state', view.kind === 'result' ? view.result.classification : 'unreadable');
 
     const offset = scroll.scrollTop;
-    head.replaceChildren(...this.#renderHead(view.result, view.email));
-    scroll.replaceChildren(
-      this.#renderObserved(view.result),
-      this.#renderAssessment(view),
-      this.#renderFoot(view.result),
-    );
+    if (view.kind === 'result') {
+      head.replaceChildren(...this.#renderHead(view.result, view.email));
+      scroll.replaceChildren(
+        this.#renderObserved(view.result),
+        this.#renderAssessment(view),
+        this.#renderFoot(view.result),
+      );
+    } else {
+      head.replaceChildren(...this.#renderUnreadableHead(view.email));
+      scroll.replaceChildren(this.#renderUnreadable(view));
+    }
     scroll.scrollTop = offset;
   }
 
@@ -169,25 +196,9 @@ export class Panel {
    */
   #renderHead(result: AnalysisResult, email: EmailMessage): Node[] {
     const state = result.classification;
-    const reference = messageReference(email);
 
     return [
-      el('div', {
-        class: 'head-top',
-        children: [
-          el('span', { class: 'brand', text: 'PhishLens' }),
-          el('button', {
-            class: 'close',
-            text: '×',
-            attrs: { type: 'button', 'aria-label': 'Close' },
-            on: {
-              click: () => {
-                this.#callbacks.onClose();
-              },
-            },
-          }),
-        ],
-      }),
+      this.#renderHeadTop(),
       el('div', {
         class: 'score-row',
         children: [
@@ -211,14 +222,45 @@ export class Panel {
           }),
         ],
       }),
-      // Both lines are message-derived and so are set as text, never parsed.
+      renderReference(email),
+    ];
+  }
+
+  /** Brand and close button, shared by both kinds of card. */
+  #renderHeadTop(): HTMLElement {
+    return el('div', {
+      class: 'head-top',
+      children: [
+        el('span', { class: 'brand', text: 'PhishLens' }),
+        el('button', {
+          class: 'close',
+          text: '×',
+          attrs: { type: 'button', 'aria-label': 'Close' },
+          on: {
+            click: () => {
+              this.#callbacks.onClose();
+            },
+          },
+        }),
+      ],
+    });
+  }
+
+  /**
+   * The head of a card with no score: the verdict slot says what did not happen instead.
+   *
+   * No score number and no meter, rather than a zero and an empty bar. A 0/100 with an empty meter is
+   * the most reassuring thing this card could possibly display, and it would be showing it at the exact
+   * moment the extension knows least about the message.
+   */
+  #renderUnreadableHead(email: EmailMessage): Node[] {
+    return [
+      this.#renderHeadTop(),
       el('div', {
-        class: 'ref',
-        children: [
-          el('div', { class: 'ref-line ref-subject', text: reference.subject, attrs: { title: reference.subject } }),
-          el('div', { class: 'ref-line ref-sender', text: reference.sender, attrs: { title: reference.sender } }),
-        ],
+        class: 'score-row',
+        children: [el('span', { class: 'verdict', text: UNREADABLE_LABEL })],
       }),
+      renderReference(email),
     ];
   }
 
@@ -253,7 +295,7 @@ export class Panel {
    * AI approved the message, and it distinguishes "no assessment" from "not one *yet*" — the two look
    * identical and mean opposite things.
    */
-  #renderAssessment(view: PanelView): HTMLElement {
+  #renderAssessment(view: ResultView): HTMLElement {
     const signals = assessmentSignals(view.result);
     const note = aiAbsenceNote(view.semantic, view.aiMode);
 
@@ -283,6 +325,48 @@ export class Panel {
           : note === null
             ? [el('p', { class: 'empty', text: 'The model returned no assessment for this message.' })]
             : []),
+      ],
+    });
+  }
+
+  /**
+   * Why there is no score, and the report that makes it fixable.
+   *
+   * The report is rendered in full and selectable rather than hidden behind the copy button alone.
+   * `navigator.clipboard` can refuse — an unfocused document is enough — and a user who cannot see what
+   * they are about to send has no way to satisfy themselves that it holds none of their mail, which is
+   * the claim the paragraph above it makes.
+   */
+  #renderUnreadable(view: UnreadableView): HTMLElement {
+    const notes = unreadableNotes(view.missing);
+
+    return el('section', {
+      children: [
+        el('h3', { class: 'section-title', text: 'Not checked' }),
+        el('div', {
+          class: 'notes',
+          children: notes.map((note) =>
+            el('p', { class: note.emphatic ? 'emphatic' : undefined, text: note.text }),
+          ),
+        }),
+        el('details', {
+          class: 'diagnostic',
+          children: [
+            el('summary', { text: 'Show the report' }),
+            el('pre', { text: view.diagnostic }),
+          ],
+        }),
+        el('button', {
+          class: 'copy',
+          text: 'Copy report',
+          attrs: { type: 'button' },
+          on: {
+            click: (event) => {
+              const button = event.currentTarget;
+              if (button instanceof HTMLButtonElement) copyReport(button, view.diagnostic);
+            },
+          },
+        }),
       ],
     });
   }
@@ -386,4 +470,35 @@ export class Panel {
       ],
     });
   }
+}
+
+/**
+ * Subject and sender, naming the message an assessment belongs to.
+ *
+ * Load-bearing: a card fixed in the corner is not visually attached to the header it describes, so
+ * without naming the message a stale assessment looks like a current one. Both lines are
+ * message-derived and so are set as text, never parsed.
+ */
+function renderReference(email: EmailMessage): HTMLElement {
+  const reference = messageReference(email);
+  return el('div', {
+    class: 'ref',
+    children: [
+      el('div', { class: 'ref-line ref-subject', text: reference.subject, attrs: { title: reference.subject } }),
+      el('div', { class: 'ref-line ref-sender', text: reference.sender, attrs: { title: reference.sender } }),
+    ],
+  });
+}
+
+/** Copies the report, reporting failure in the button rather than silently doing nothing. */
+function copyReport(button: HTMLButtonElement, report: string): void {
+  void navigator.clipboard.writeText(report).then(
+    () => {
+      button.textContent = 'Copied';
+    },
+    () => {
+      button.textContent = 'Copy failed — select the report above';
+      button.disabled = true;
+    },
+  );
 }

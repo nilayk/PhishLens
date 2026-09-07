@@ -114,6 +114,19 @@ export interface RawFields {
   subject?: string;
 }
 
+/**
+ * A part of a message the extraction has to find for the score to mean anything.
+ *
+ * Named so that "the adapter could not read this" can be *reported* instead of silently becoming an
+ * absent field. Every field of `EmailMessage` is optional, which is right — real mail is missing
+ * things — but it makes a Gmail markup change indistinguishable from a message that simply has no
+ * sender, and those two want opposite treatment.
+ *
+ * Lives here rather than in `gmail/` because the UI has to name the gap and must not import a mail
+ * adapter to do it.
+ */
+export type MessagePart = 'sender' | 'subject' | 'body';
+
 // ---------------------------------------------------------------------------
 // Signals & results
 // ---------------------------------------------------------------------------

@@ -45,6 +45,12 @@ export const BADGE_CSS = `
 .badge[data-state="suspicious"] { background: #fce8e6; color: #b3261e; border-color: #f9d2cf; }
 .badge[data-state="high-risk"]  { background: #b3261e; color: #ffffff; border-color: #8c1d18; }
 .badge[data-state="pending"]    { background: #f1f3f4; color: #5f6368; border-color: #e0e3e5; cursor: default; }
+/*
+ * Deliberately not on the green-to-red scale. "Not checked" is not a low reading, and any colour from
+ * the risk palette would be read as one; a dashed neutral border says "this is not a verdict" without
+ * competing with Gmail's own header controls for attention.
+ */
+.badge[data-state="unreadable"] { background: #ffffff; color: #5f6368; border-color: #9aa0a6; border-style: dashed; }
 
 @media (prefers-color-scheme: dark) {
   .badge[data-state="low"]        { background: #1e3a28; color: #81c995; border-color: #2d5a3d; }
@@ -52,6 +58,7 @@ export const BADGE_CSS = `
   .badge[data-state="suspicious"] { background: #452420; color: #f28b82; border-color: #6b322c; }
   .badge[data-state="high-risk"]  { background: #b3261e; color: #ffffff; border-color: #d93025; }
   .badge[data-state="pending"]    { background: #2d2e30; color: #9aa0a6; border-color: #3c4043; }
+  .badge[data-state="unreadable"] { background: #202124; color: #9aa0a6; border-color: #5f6368; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -111,6 +118,8 @@ export const PANEL_CSS = `
 .panel[data-state="caution"]::before { background: #f9ab00; }
 .panel[data-state="suspicious"]::before { background: #ea4335; }
 .panel[data-state="high-risk"]::before { background: #b3261e; }
+/* Neutral, for the same reason as the badge: there is no reading to colour. */
+.panel[data-state="unreadable"]::before { background: #9aa0a6; }
 
 /* Head is fixed; only the findings scroll. */
 .head { flex: none; padding: 12px 16px; border-bottom: 1px solid #f1f3f4; }
@@ -156,6 +165,12 @@ export const PANEL_CSS = `
 .score-value { font-size: 26px; font-weight: 500; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
 .score-max { font-size: 13px; color: #5f6368; }
 .verdict { margin-left: auto; font-size: 13px; font-weight: 500; }
+/*
+ * Alone in the row, the verdict *is* the headline — there is no score for it to sit beside. Without
+ * this it keeps the \`margin-left: auto\` that right-aligns it against a number, and reads as a label
+ * stranded in the corner rather than the card's answer.
+ */
+.score-row .verdict:only-child { margin-left: 0; font-size: 18px; }
 
 /*
  * Which message this is about. The card no longer sits beside the header it describes, so it has to
@@ -290,6 +305,50 @@ li.finding:focus-visible { outline: 2px solid #1a73e8; outline-offset: -2px; }
 
 .empty { color: #5f6368; margin: 0; }
 
+/*
+ * The "not checked" card. No score, no meter, no findings — so the explanation is the content, at body
+ * size rather than the 11px used for notes, because it is the only thing there is to read.
+ */
+.notes { margin: 0; padding: 0; }
+.notes p { margin: 0 0 8px; }
+.notes p:last-child { margin-bottom: 0; }
+/* The sentence that says an absent warning is not an all-clear. Weighted so it is not skimmed past. */
+.notes p.emphatic { font-weight: 500; color: #202124; }
+
+.diagnostic { margin-top: 12px; }
+.diagnostic summary { cursor: pointer; color: #1a73e8; font-size: 11px; }
+.diagnostic summary:focus-visible { outline: 2px solid #1a73e8; outline-offset: 2px; }
+.diagnostic pre {
+  margin: 8px 0 0;
+  padding: 8px;
+  max-height: 180px;
+  overflow: auto;
+  background: #f8f9fa;
+  border: 1px solid #f1f3f4;
+  border-radius: 6px;
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #3c4043;
+  /* Selectable and pre-formatted: the copy button is a convenience, not the only way out. */
+  white-space: pre;
+  user-select: text;
+}
+
+.copy {
+  margin-top: 10px;
+  padding: 6px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  color: #1a73e8;
+  background: transparent;
+  border: 1px solid #dadce0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.copy:hover { background: #f8f9fa; }
+.copy:focus-visible { outline: 2px solid #1a73e8; outline-offset: 1px; }
+
 .foot {
   padding: 10px 16px 12px;
   font-size: 11px;
@@ -347,6 +406,10 @@ li.finding:focus-visible { outline: 2px solid #1a73e8; outline-offset: -2px; }
   .scroll::-webkit-scrollbar-thumb:hover { background-color: #80868b; }
   li.finding[data-locatable="true"]:hover { background: #35363a; }
   .evidence, .ai-note { background: #202124; border-left-color: #5f6368; color: #bdc1c6; }
+  .notes p.emphatic { color: #e8eaed; }
+  .diagnostic pre { background: #202124; border-color: #3c4043; color: #bdc1c6; }
+  .copy { color: #8ab4f8; border-color: #5f6368; }
+  .copy:hover { background: #35363a; }
   .pending { color: #e8eaed; }
   .spinner { border-color: #3c4043; border-top-color: #8ab4f8; }
   .verdict[data-state="low"] { color: #81c995; }

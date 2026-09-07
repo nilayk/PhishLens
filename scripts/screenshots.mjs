@@ -58,8 +58,9 @@ const SHOTS = [
     name: 'badges.png',
     query: { view: 'badges', semantic: 'ready', bare: '1' },
     width: 900,
-    height: 214,
-    caption: 'the badge at each risk level',
+    // One row taller than the bands, for the "not checked" state at the bottom.
+    height: 266,
+    caption: 'the badge at each risk level, and unable to read',
   },
 ];
 

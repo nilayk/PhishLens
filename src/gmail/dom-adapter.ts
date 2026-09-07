@@ -4,6 +4,10 @@
  * Extraction discipline:
  *  - **Every field is independently `try`-wrapped.** A Gmail redesign that breaks attachment chips
  *    degrades to "no attachment signals"; it does not break sender extraction or the whole extension.
+ *  - **A gap in a load-bearing part is reported, not absorbed.** The isolation above is what keeps the
+ *    extension alive through a redesign, but on its own it turns a broken sender selector into a
+ *    message with no findings and therefore a reassuring score. `Extraction.missing` names what could
+ *    not be read so the caller can decline to show a score at all.
  *  - **Read-only.** Nothing here writes to Gmail's DOM, adds listeners to Gmail's elements, or
  *    re-parents anything.
  *  - **`textContent` only.** No `innerHTML` read that could be re-inserted anywhere, no HTML parsing
@@ -20,11 +24,12 @@ import type {
   EmailAuthInfo,
   EmailLink,
   EmailMessage,
+  MessagePart,
   RawFields,
   ThreadParticipant,
 } from '../shared/types.js';
 import { normalizeDomain, parseUrl } from '../shared/url.js';
-import type { MailAdapter, MessageHandle } from './adapter.js';
+import type { Extraction, MailAdapter, MessageHandle } from './adapter.js';
 import { SELECTORS, queryAll, queryAllUnion, queryFirst } from './selectors.js';
 
 /** Upper bound on links extracted from one message. A hostile message can contain thousands. */
@@ -124,7 +129,7 @@ export class GmailDomAdapter implements MailAdapter {
     );
   }
 
-  extract(handle: MessageHandle): EmailMessage {
+  extract(handle: MessageHandle): Extraction {
     const sender = attempt('sender', () => extractSender(handle.root), {});
     const bodyText = attempt('body', () => extractBodyText(handle.bodyElement), '');
     const auth = attempt<EmailAuthInfo | undefined>('auth', () => extractAuth(handle.root), undefined);
@@ -141,7 +146,7 @@ export class GmailDomAdapter implements MailAdapter {
       };
     }, {});
 
-    return {
+    const email: EmailMessage = {
       ...(sender.name !== undefined ? { senderName: sender.name } : {}),
       ...(sender.email !== undefined ? { senderEmail: sender.email } : {}),
       ...(sender.replyTo !== undefined ? { replyTo: sender.replyTo } : {}),
@@ -156,7 +161,35 @@ export class GmailDomAdapter implements MailAdapter {
       ...(handle.priorSenders.length > 0 ? { thread: { priorSenders: handle.priorSenders } } : {}),
       ...(Object.keys(raw).length > 0 ? { raw } : {}),
     };
+
+    return { email, missing: missingParts(handle, email) };
   }
+}
+
+/**
+ * Which load-bearing parts of the message were not read.
+ *
+ * Judged by *consequence*, not by whether a particular element matched: the sender is missing when no
+ * address came back, whether that is because the header markup changed, because the `email` attribute
+ * was renamed, or because the textual fallback could not be parsed either. All three leave the identity
+ * checks with nothing, which is the only thing the caller acts on.
+ *
+ * The subject is the exception, and the reason this looks at an element rather than a value: an empty
+ * subject is ordinary mail, so emptiness proves nothing and only the absence of the element itself
+ * suggests the selectors have gone stale.
+ */
+function missingParts(handle: MessageHandle, email: EmailMessage): readonly MessagePart[] {
+  const missing: MessagePart[] = [];
+
+  if (email.senderEmail === undefined || email.senderEmail === '') missing.push('sender');
+  if (!attempt('subject-element', () => queryFirst(document, SELECTORS.subject) !== null, false)) {
+    missing.push('subject');
+  }
+  // Reached only if `currentMessage()` ever returns a handle without one, which it is written not to.
+  if (handle.bodyElement === null) missing.push('body');
+
+  if (missing.length > 0) logger.info('parts of the message could not be read', { missing });
+  return missing;
 }
 
 // ---------------------------------------------------------------------------
